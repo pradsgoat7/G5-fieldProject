@@ -11,14 +11,30 @@ import Card from '../components/Card';
 const HomeScreen = ({ navigation }) => {
   const { user, points, footprint, itemsLogged, pickupsScheduled, co2Saved, personalActivity, allUsers, footprintEntries, logout } = useContext(AppContext);
   const [adminRankData, setAdminRankData] = useState(null);
+  const [hasActivePoll, setHasActivePoll] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
+      checkActivePolls();
       if (user?.role === 'admin') {
         computeAdminRank();
       }
     }, [user])
   );
+
+  const checkActivePolls = async () => {
+    try {
+       const polls = await storage.getCommunityPolls() || [];
+       const societyPolls = polls.filter(p => p.societyCode === user.societyCode && p.status === 'active' && Date.now() <= p.endsAt);
+       if (user?.role === 'member') {
+          // Check if un-voted active polls exist
+          const hasUnvoted = societyPolls.some(p => !Object.keys(p.votes).includes(user.id));
+          setHasActivePoll(hasUnvoted);
+       } else {
+          setHasActivePoll(societyPolls.length > 0);
+       }
+    } catch(e) {}
+  };
 
   const computeAdminRank = async () => {
     try {
@@ -112,6 +128,46 @@ const HomeScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           )}
+
+          {/* Smart Highlight: Active Polls Banner */}
+          <TouchableOpacity 
+             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: hasActivePoll ? '#FFF9C4' : '#E3F2FD', padding: 15, borderRadius: 12, marginTop: 15, borderWidth: 1, borderColor: hasActivePoll ? '#FBC02D' : '#90CAF9' }}
+             onPress={() => navigation.navigate('CommunityVoting')}
+          >
+             <View style={{flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name={hasActivePoll ? "alert-circle" : "vote"} size={24} color={hasActivePoll ? "#F57F17" : "#1976D2"} />
+                <Text style={{ marginLeft: 10, fontSize: 16, fontWeight: 'bold', color: hasActivePoll ? '#F57F17' : '#1976D2' }}>
+                  {hasActivePoll ? 'Vote Now 🗳️ - Action Required' : 'Community Voting 🗳️'}
+                </Text>
+             </View>
+             <MaterialCommunityIcons name="chevron-right" size={24} color={hasActivePoll ? "#F57F17" : "#1976D2"} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', padding: 15, borderRadius: 12, marginTop: 15, borderWidth: 1, borderColor: '#E0E0E0' }}
+             onPress={() => navigation.navigate('Updates')}
+          >
+             <View style={{flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name="broadcast" size={24} color={colors.primary} />
+                <Text style={{ marginLeft: 10, fontSize: 16, fontWeight: 'bold', color: colors.primary }}>
+                  Society Updates 📢
+                </Text>
+             </View>
+             <MaterialCommunityIcons name="chevron-right" size={24} color={colors.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', padding: 15, borderRadius: 12, marginTop: 15, borderWidth: 1, borderColor: '#E0E0E0' }}
+             onPress={() => navigation.navigate('FAQ')}
+          >
+             <View style={{flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name="frequently-asked-questions" size={24} color={colors.primary} />
+                <Text style={{ marginLeft: 10, fontSize: 16, fontWeight: 'bold', color: colors.primary }}>
+                  FAQs ❓
+                </Text>
+             </View>
+             <MaterialCommunityIcons name="chevron-right" size={24} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.cardsRow}>
@@ -164,15 +220,24 @@ const HomeScreen = ({ navigation }) => {
         )}
 
         {user?.role === 'member' && (
-          <Card style={[styles.mainCard, { marginBottom: 20, borderTopWidth: 4, borderTopColor: getFootprintColor(footprint) }]}>
-            <Text style={styles.cardTitle}>Your Personal Footprint</Text>
-            <View style={styles.scoreRow}>
-              <Text style={styles.scoreText}>{footprint.toFixed(2)} kg</Text>
-            </View>
-            <View style={[styles.badge, { backgroundColor: getFootprintColor(footprint) }]}>
-              <Text style={styles.badgeText}>{getFootprintLabel(footprint)}</Text>
-            </View>
-          </Card>
+          <View>
+            <Card style={[styles.mainCard, { marginBottom: 15, borderTopWidth: 4, borderTopColor: getFootprintColor(footprint) }]}>
+              <Text style={styles.cardTitle}>Your Personal Footprint</Text>
+              <View style={styles.scoreRow}>
+                <Text style={styles.scoreText}>{footprint.toFixed(2)} kg</Text>
+              </View>
+              <View style={[styles.badge, { backgroundColor: getFootprintColor(footprint) }]}>
+                <Text style={styles.badgeText}>{getFootprintLabel(footprint)}</Text>
+              </View>
+            </Card>
+            
+            <TouchableOpacity 
+              style={{ backgroundColor: '#E8F5E9', padding: 15, borderRadius: 12, alignItems: 'center', borderColor: '#C8E6C9', borderWidth: 1, marginBottom: 20 }}
+              onPress={() => navigation.navigate('SustainabilityReport')}
+            >
+              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>View My Report Card 🌿</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         <Text style={styles.sectionTitle}>Quick Stats</Text>
@@ -199,15 +264,24 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
         {user?.role === 'admin' && (
-          <TouchableOpacity 
-            style={{ backgroundColor: '#FFF', padding: 15, borderRadius: 12, alignItems: 'center', borderColor: colors.primary, borderWidth: 1, marginBottom: 20 }}
-            onPress={() => {
-              const members = allUsers.filter(u => u.societyCode === user.societyCode && u.role === 'member');
-              Alert.alert('Society Members', members.length > 0 ? members.map(m => `• ${m.name} (${m.email})`).join('\n') : 'No members yet.');
-            }}
-          >
-            <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Manage Society Members</Text>
-          </TouchableOpacity>
+          <View>
+            <TouchableOpacity 
+              style={{ backgroundColor: '#FFF', padding: 15, borderRadius: 12, alignItems: 'center', borderColor: colors.primary, borderWidth: 1, marginBottom: 12 }}
+              onPress={() => {
+                const members = allUsers.filter(u => u.societyCode === user.societyCode && u.role === 'member');
+                Alert.alert('Society Members', members.length > 0 ? members.map(m => `• ${m.name} (${m.email})`).join('\n') : 'No members yet.');
+              }}
+            >
+              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Manage Society Members</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={{ backgroundColor: '#E8F5E9', padding: 15, borderRadius: 12, alignItems: 'center', borderColor: '#C8E6C9', borderWidth: 1, marginBottom: 20 }}
+              onPress={() => navigation.navigate('MemberActivity')}
+            >
+              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>View Member Activity 👥</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {user?.role === 'member' && (

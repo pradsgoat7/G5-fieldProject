@@ -1,6 +1,9 @@
 import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, SafeAreaView, Dimensions, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { BarChart } from 'react-native-chart-kit';
+import * as storage from '../services/storageService';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
@@ -20,6 +23,73 @@ const CalculatorScreen = ({ navigation }) => {
   const [inputs, setInputs] = useState({});
   const [result, setResult] = useState(null);
   const [historyTab, setHistoryTab] = useState('personal');
+
+  const [weeklyData, setWeeklyData] = useState([0, 0, 0, 0]);
+  const [insightText, setInsightText] = useState("");
+  const [latestRatingColor, setLatestRatingColor] = useState(colors.ratingGood);
+
+  const getISOWeekInfo = (date = new Date()) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const day = (d.getDay() || 7) - 1; 
+    d.setDate(d.getDate() - day + 3); 
+    const firstThursday = d.getTime();
+    d.setMonth(0, 1);
+    if (d.getDay() !== 4) {
+      d.setMonth(0, 1 + ((4 - d.getDay()) + 7) % 7);
+    }
+    const weekNum = 1 + Math.ceil((firstThursday - d) / 604800000);
+    return { year: d.getFullYear(), week: weekNum };
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchWeeklyData();
+    }, [user])
+  );
+
+  const fetchWeeklyData = async () => {
+    if (!user) return;
+    try {
+      const allEntries = await storage.getAllFootprintEntries() || [];
+      const userEntries = allEntries.filter(f => f.userId === user.id);
+      
+      const current = getISOWeekInfo();
+      let weeks = [];
+      for(let i=3; i>=0; i--) {
+         let w = current.week - i;
+         let y = current.year;
+         if (w <= 0) {
+            y -= 1;
+            w += 52; 
+         }
+         weeks.push({ year: y, week: w, total: 0 });
+      }
+
+      userEntries.forEach(entry => {
+         const dInfo = getISOWeekInfo(entry.date);
+         const targetWeek = weeks.find(w => w.year === dInfo.year && w.week === dInfo.week);
+         if (targetWeek) {
+            targetWeek.total += (entry.totalKg || 0);
+         }
+      });
+
+      const dataArr = weeks.map(w => w.total);
+      setWeeklyData(dataArr);
+
+      const mostRecentTotal = dataArr[3];
+      const colorRating = getFootprintProps(mostRecentTotal);
+      setLatestRatingColor(colorRating.color);
+
+      const w3 = dataArr[2];
+      const w4 = dataArr[3];
+      if (w4 < w3) setInsightText("📉 Great job! Your usage is decreasing.");
+      else if (w4 > w3) setInsightText("📈 Your usage increased this week. Try to reduce!");
+      else setInsightText("➡️ Your usage has been consistent this week.");
+    } catch (e) {
+      console.log(e);
+    }
+  };
 
   const handleInputChange = (id, value) => {
     setInputs(prev => ({ ...prev, [id]: parseInt(value) || 0 }));
@@ -128,6 +198,50 @@ const CalculatorScreen = ({ navigation }) => {
             <Button title="Save to Dashboard" onPress={saveToDashboard} style={{ marginTop: 20 }} />
           </Card>
         )}
+
+        {/* FEATURE 1: PLASTIC FOOTPRINT HISTORY CHART */}
+        <View style={{ marginTop: 25, marginBottom: 15 }}>
+          <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>📊 Your 4-Week Trend</Text>
+          <Card>
+            <BarChart
+              data={{
+                labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                datasets: [{ data: weeklyData }]
+              }}
+              width={Dimensions.get('window').width - 80}
+              height={200}
+              yAxisLabel=""
+              yAxisSuffix=""
+              chartConfig={{
+                backgroundGradientFrom: '#ffffff',
+                backgroundGradientFromOpacity: 0,
+                backgroundGradientTo: '#ffffff',
+                backgroundGradientToOpacity: 0,
+                color: (opacity = 1) => latestRatingColor,
+                labelColor: (opacity = 1) => colors.textSecondary,
+                strokeWidth: 2,
+                barPercentage: 0.5,
+                decimalPlaces: 1,
+                fillShadowGradient: latestRatingColor,
+                fillShadowGradientOpacity: 1
+              }}
+              verticalLabelRotation={0}
+              fromZero={true}
+              withInnerLines={false}
+              showValuesOnTopOfBars={true}
+              style={{
+                marginVertical: 8,
+                borderRadius: 16,
+                marginLeft: -10
+              }}
+            />
+            {insightText ? (
+               <Text style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: colors.textPrimary, fontWeight: '500' }}>
+                 {insightText}
+               </Text>
+            ) : null}
+          </Card>
+        </View>
 
         {(personalFootprints.length > 0 || user?.role === 'admin') && (
           <View style={{ marginTop: 30 }}>

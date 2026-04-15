@@ -32,3 +32,12 @@ export const getHelpfulTips = async () => JSON.parse(await AsyncStorage.getItem(
 
 export const saveRecentActivity = async (val) => AsyncStorage.setItem('activity_feed', JSON.stringify(val));
 export const getRecentActivity = async () => JSON.parse(await AsyncStorage.getItem('activity_feed'));
+
+export const saveOnboardingComplete = async (val) => AsyncStorage.setItem('onboarding_complete', val);
+export const getOnboardingComplete = async () => await AsyncStorage.getItem('onboarding_complete');
+
+export const saveCommunityPolls = async (val) => AsyncStorage.setItem('community_polls', JSON.stringify(val));
+export const getCommunityPolls = async () => JSON.parse(await AsyncStorage.getItem('community_polls'));
+
+export const saveCommunityUpdates = async (val) => AsyncStorage.setItem('community_updates', JSON.stringify(val));
+export const getCommunityUpdates = async () => JSON.parse(await AsyncStorage.getItem('community_updates'));

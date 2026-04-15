@@ -16,6 +16,11 @@ import VendorsScreen from '../screens/VendorsScreen';
 import CommunityScreen from '../screens/CommunityScreen';
 import RewardsScreen from '../screens/RewardsScreen';
 import SocietyPointsScreen from '../screens/SocietyPointsScreen';
+import SustainabilityReportScreen from '../screens/SustainabilityReportScreen';
+import MemberActivityScreen from '../screens/MemberActivityScreen';
+import VotingScreen from '../screens/VotingScreen';
+import UpdatesScreen from '../screens/UpdatesScreen';
+import FAQScreen from '../screens/FAQScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -94,6 +99,11 @@ const AppNavigator = () => {
         <>
           <Stack.Screen name="Main" component={user?.role === 'admin' ? AdminTabs : MemberTabs} />
           <Stack.Screen name="Rewards" component={RewardsScreen} />
+          <Stack.Screen name="SustainabilityReport" component={SustainabilityReportScreen} />
+          <Stack.Screen name="MemberActivity" component={MemberActivityScreen} />
+          <Stack.Screen name="CommunityVoting" component={VotingScreen} />
+          <Stack.Screen name="Updates" component={UpdatesScreen} />
+          <Stack.Screen name="FAQ" component={FAQScreen} />
         </>
       )}
     </Stack.Navigator>
