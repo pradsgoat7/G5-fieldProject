@@ -8,6 +8,7 @@ import { colors } from '../theme/colors';
 
 // Screens
 import LoginScreen from '../screens/LoginScreen';
+import AdminSuccessScreen from '../screens/AdminSuccessScreen';
 import HomeScreen from '../screens/HomeScreen';
 import CalculatorScreen from '../screens/CalculatorScreen';
 import ExchangeScreen from '../screens/ExchangeScreen';
@@ -85,7 +86,10 @@ const AppNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!isAuthenticated ? (
-        <Stack.Screen name="Login" component={LoginScreen} />
+        <>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="AdminSuccess" component={AdminSuccessScreen} />
+        </>
       ) : (
         <>
           <Stack.Screen name="Main" component={user?.role === 'admin' ? AdminTabs : MemberTabs} />

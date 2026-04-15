@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Dimensions, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Dimensions, TextInput, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
@@ -7,6 +8,7 @@ import Button from '../components/Button';
 import { AppContext } from '../context/AppContext';
 
 const { width } = Dimensions.get('window');
+import * as storage from '../services/storageService';
 
 const TIPS = [
   { id: '1', text: 'Carry a reusable bag 🛍️' },
@@ -16,13 +18,7 @@ const TIPS = [
   { id: '5', text: 'Opt for bar soap over plastic bottles 🧼' },
 ];
 
-const LEADERBOARD = [
-  { rank: 1, name: 'Sun City Apartments', points: 15400 },
-  { rank: 2, name: 'Green Valley Society', points: 12300 },
-  { rank: 3, name: 'Oakwood Heights', points: 9800 },
-  { rank: 4, name: 'Riverside Enclave', points: 8750 },
-  { rank: 5, name: 'Pine Crest', points: 6400 },
-];
+
 
 const POSTS = [
   { id: '1', user: 'Anita M.', time: '2 hours ago', content: 'Just replaced all plastic containers with glass jars! Feels so much cleaner.' },
@@ -31,9 +27,68 @@ const POSTS = [
 ];
 
 const CommunityScreen = () => {
-  const { challengeJoined, toggleChallenge, logActivity, societies, submissions, redemptions, user } = useContext(AppContext);
+  const { challengeJoined, toggleChallenge, logActivity, user } = useContext(AppContext);
   const [announcement, setAnnouncement] = useState('');
   const [localPosts, setLocalPosts] = useState(POSTS);
+  
+  const [lbItems, setLbItems] = useState([]);
+  const [isComputingLB, setIsComputingLB] = useState(true);
+
+  const computeLeaderboard = async () => {
+    setIsComputingLB(true);
+    try {
+      const storedSocieties = await storage.getSocieties() || [];
+      const storedUsers = await storage.getAllUsers() || [];
+      const storedSubmissions = await storage.getAllSubmissions() || [];
+
+      const computed = storedSocieties.map(soc => {
+        const membersCount = storedUsers.filter(u => u.societyCode === soc.societyCode && u.role === 'member').length;
+        
+        const socSubs = storedSubmissions.filter(s => s.societyCode === soc.societyCode);
+        const totalPointsEarned = socSubs.reduce((acc, sub) => acc + (sub.points || 0), 0);
+
+        const regDate = soc.registrationDate || (Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const daysSinceRegistration = Math.max(0, (Date.now() - regDate) / (1000 * 60 * 60 * 24));
+        const weeksActive = Math.floor(daysSinceRegistration / 7);
+
+        const isEvaluating = weeksActive < 2;
+        const safeMembers = Math.max(membersCount, 1);
+        const normalizedScore = isEvaluating ? 0 : (totalPointsEarned / (weeksActive * safeMembers));
+
+        let grade = 'C';
+        if (normalizedScore >= 10.0) grade = 'A';
+        else if (normalizedScore >= 4.0) grade = 'B';
+
+        return {
+          ...soc,
+          membersCount,
+          totalPointsEarned,
+          weeksActive,
+          daysSinceRegistration: Math.floor(daysSinceRegistration),
+          isEvaluating,
+          normalizedScore,
+          grade
+        };
+      });
+
+      const ranked = computed.filter(s => !s.isEvaluating).sort((a, b) => b.normalizedScore - a.normalizedScore);
+      const evaluating = computed.filter(s => s.isEvaluating).sort((a, b) => (a.registrationDate || 0) - (b.registrationDate || 0));
+
+      const finalRanked = ranked.map((r, i) => ({ ...r, rank: i + 1 }));
+
+      setLbItems([...finalRanked, ...evaluating]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsComputingLB(false);
+    }
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      computeLeaderboard();
+    }, [])
+  );
 
   const handleJoin = async () => {
     await toggleChallenge();
@@ -57,15 +112,7 @@ const CommunityScreen = () => {
 
   const visiblePosts = localPosts.filter(p => !p.societyCode || p.societyCode === user?.societyCode);
   
-  const leaderboard = societies.map(soc => {
-     const socSubs = submissions.filter(s => s.societyCode === soc.societyCode);
-     const socReds = redemptions.filter(r => r.societyCode === soc.societyCode);
-     const earned = socSubs.reduce((acc, sub) => acc + (sub.points || 0), 0);
-     const spent = socReds.reduce((acc, r) => acc + (r.pointsSpent || 0), 0);
-     return { name: soc.societyName, points: earned - spent };
-  }).sort((a,b) => b.points - a.points).slice(0, 5);
 
-  const lbItems = societies.length > 0 ? leaderboard.map((l, i) => ({ rank: i+1, ...l })) : LEADERBOARD;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -115,17 +162,73 @@ const CommunityScreen = () => {
           </View>
         </Card>
 
-        <Text style={styles.sectionTitle}>Society Leaderboard (Top 5)</Text>
+        <Text style={styles.sectionTitle}>Society Leaderboard</Text>
         <Card style={styles.leaderboardCard}>
-          {lbItems.map((item, index) => (
-            <View key={item.rank} style={[styles.lbRow, index < (Math.min(lbItems.length, 5) - 1) && styles.lbBorder]}>
-              <View style={styles.lbLeft}>
-                <Text style={styles.lbRank}>#{item.rank}</Text>
-                <Text style={[styles.lbName, item.name === user?.societyName && styles.lbNameHighlight]}>{item.name}</Text>
-              </View>
-              <Text style={styles.lbPoints}>{item.points} pts</Text>
+          {isComputingLB ? (
+            <View style={{ padding: 30, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
-          ))}
+          ) : lbItems.length === 0 ? (
+            <Text style={{ padding: 20, textAlign: 'center', color: colors.textSecondary }}>No societies available.</Text>
+          ) : (
+            lbItems.map((item, index) => {
+              const isMySociety = item.societyCode === user?.societyCode;
+              const hasRankedSocieties = lbItems.some(s => !s.isEvaluating);
+              
+              if (!hasRankedSocieties && index === 0) {
+                // If the very first item is under evaluation, it means no ranked societies exist
+              }
+
+              let medal = '';
+              if (!item.isEvaluating) {
+                if (item.rank === 1) medal = '🥇';
+                else if (item.rank === 2) medal = '🥈';
+                else if (item.rank === 3) medal = '🥉';
+              }
+
+              let gradeIcon = '⚪';
+              let gradeText = 'Eval';
+              if (!item.isEvaluating) {
+                gradeText = item.grade;
+                if (item.grade === 'A') gradeIcon = '🟢';
+                else if (item.grade === 'B') gradeIcon = '🟡';
+                else if (item.grade === 'C') gradeIcon = '🔴';
+              }
+
+              return (
+                <View key={item.societyCode} style={[styles.lbNewRow, isMySociety && styles.mySocietyHighlight]}>
+                  {isMySociety && <Text style={styles.mySocietyBadge}>Your Society</Text>}
+                  
+                  {!item.isEvaluating ? (
+                    <>
+                      <View style={styles.lbNewHeader}>
+                        <Text style={styles.lbNewRank}>{medal ? medal : `#${item.rank}`}  {item.societyName}</Text>
+                        <Text style={styles.lbNewGrade}>[{gradeText}] {gradeIcon}</Text>
+                      </View>
+                      <Text style={styles.lbNewScore}>Score: {item.normalizedScore.toFixed(1)} pts/household/week</Text>
+                      <Text style={styles.lbNewSub}>Members: {item.membersCount} | Active: {item.weeksActive} weeks</Text>
+                      <Text style={styles.lbNewSub}>Total Points: {item.totalPointsEarned}</Text>
+                      {item.totalPointsEarned === 0 && <Text style={[styles.lbNewSub, { fontStyle: 'italic', color: '#999' }]}>No submissions yet</Text>}
+                    </>
+                  ) : (
+                    <View style={styles.evalCard}>
+                      <View style={styles.lbNewHeader}>
+                        <Text style={[styles.lbNewRank, { color: '#666' }]}>🕐  {item.societyName}</Text>
+                        <Text style={styles.lbNewGrade}>[Eval] ⚪</Text>
+                      </View>
+                      <Text style={[styles.lbNewScore, { color: '#888', fontSize: 13 }]}>Ranking begins after 2 weeks</Text>
+                      <Text style={[styles.lbNewSub, { color: '#888' }]}>Members: {item.membersCount} | Active: {item.daysSinceRegistration} days</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
+          {!isComputingLB && lbItems.length > 0 && !lbItems.some(s => !s.isEvaluating) && (
+            <Text style={{ padding: 15, textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
+              No societies ranked yet. Rankings appear after 2 weeks of activity.
+            </Text>
+          )}
         </Card>
 
         <Text style={styles.sectionTitle}>Community Posts</Text>
@@ -282,39 +385,69 @@ const styles = StyleSheet.create({
   leaderboardCard: {
     padding: 0,
     marginBottom: 20,
+    backgroundColor: 'transparent',
+    elevation: 0,
+    shadowOpacity: 0,
   },
-  lbRow: {
+  lbNewRow: {
+    backgroundColor: '#FFF',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  mySocietyHighlight: {
+    borderColor: colors.primary,
+    backgroundColor: '#F1F8E9',
+    borderWidth: 2,
+  },
+  mySocietyBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderBottomLeftRadius: 8,
+    zIndex: 1,
+  },
+  lbNewHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 15,
     alignItems: 'center',
+    marginBottom: 6,
   },
-  lbBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  lbLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  lbRank: {
+  lbNewRank: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: colors.textSecondary,
-    width: 30,
-  },
-  lbName: {
-    fontSize: 16,
     color: colors.textPrimary,
+    flex: 1,
   },
-  lbNameHighlight: {
-    fontWeight: 'bold',
-    color: colors.primary,
-  },
-  lbPoints: {
+  lbNewGrade: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: colors.success,
+    color: colors.textSecondary,
+    marginLeft: 10,
+  },
+  lbNewScore: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  lbNewSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  evalCard: {
+    opacity: 0.8,
   },
   postCard: {
     marginBottom: 15,

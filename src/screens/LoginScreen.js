@@ -1,12 +1,13 @@
 import React, { useContext, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, SafeAreaView, Alert, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, SafeAreaView, Alert, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppContext } from '../context/AppContext';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import { colors } from '../theme/colors';
 
-const LoginScreen = () => {
+const LoginScreen = ({ navigation }) => {
   const { loginByCredentials, registerAdmin, registerMember } = useContext(AppContext);
   const [mode, setMode] = useState('login'); // login | register_member | register_admin
 
@@ -20,20 +21,68 @@ const LoginScreen = () => {
   const executeAction = async () => {
     try {
       if (mode === 'login') {
-        if (!email || !password) return Alert.alert('Error', 'Please enter email and password');
+        if (!email || !password) {
+          Platform.OS === 'web' ? window.alert('Please enter email and password') : Alert.alert('Error', 'Please enter email and password');
+          return;
+        }
         await loginByCredentials(email, password);
       } else if (mode === 'register_admin') {
-        if (!name || !email || !password || !societyName) return Alert.alert('Error', 'Please fill all fields');
-        if (password !== confirmPassword) return Alert.alert('Error', 'Passwords do not match');
+        if (!name || !email || !password || !societyName) {
+          Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
+          return;
+        }
+        if (password !== confirmPassword) {
+          Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
+          return;
+        }
         const code = await registerAdmin(name, societyName, email, password);
-        Alert.alert('Success', `Your Society Code is ${code} — share this with your residents so they can join your society.`);
+        
+        if (Platform.OS === 'web') {
+          window.alert(`Society Registered! 🎉\nYour Society Code is: ${code}\n\nPlease save this code and share it with your residents so they can join your society on PlasticTrack.`);
+          setMode('login');
+          setPassword('');
+          setConfirmPassword('');
+          navigation.navigate("AdminSuccess", { societyCode: code });
+        } else {
+          Alert.alert(
+            "Society Registered! 🎉",
+            `Your Society Code is: ${code}\n\nPlease save this code and share it with your residents so they can join your society on PlasticTrack.`,
+            [
+              {
+                text: "Copy Code",
+                onPress: async () => {
+                  await Clipboard.setStringAsync(code);
+                  setMode('login');
+                  setPassword('');
+                  setConfirmPassword('');
+                  navigation.navigate("AdminSuccess", { societyCode: code });
+                }
+              },
+              {
+                text: "OK, Got it!",
+                onPress: () => {
+                  setMode('login');
+                  setPassword('');
+                  setConfirmPassword('');
+                  navigation.navigate("AdminSuccess", { societyCode: code });
+                }
+              }
+            ]
+          );
+        }
       } else if (mode === 'register_member') {
-        if (!name || !email || !password || !societyCode) return Alert.alert('Error', 'Please fill all fields');
-        if (password !== confirmPassword) return Alert.alert('Error', 'Passwords do not match');
+        if (!name || !email || !password || !societyCode) {
+          Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
+          return;
+        }
+        if (password !== confirmPassword) {
+          Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
+          return;
+        }
         await registerMember(name, email, societyCode, password);
       }
     } catch (e) {
-      Alert.alert('Error', e.message);
+      Platform.OS === 'web' ? window.alert(e.message) : Alert.alert('Error', e.message);
     }
   };
 

@@ -1,5 +1,8 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import * as storage from '../services/storageService';
+import * as Clipboard from 'expo-clipboard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
@@ -7,6 +10,54 @@ import Card from '../components/Card';
 
 const HomeScreen = ({ navigation }) => {
   const { user, points, footprint, itemsLogged, pickupsScheduled, co2Saved, personalActivity, allUsers, footprintEntries, logout } = useContext(AppContext);
+  const [adminRankData, setAdminRankData] = useState(null);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.role === 'admin') {
+        computeAdminRank();
+      }
+    }, [user])
+  );
+
+  const computeAdminRank = async () => {
+    try {
+      const storedSocieties = await storage.getSocieties() || [];
+      const storedUsers = await storage.getAllUsers() || [];
+      const storedSubmissions = await storage.getAllSubmissions() || [];
+
+      const computed = storedSocieties.map(soc => {
+        const membersCount = storedUsers.filter(u => u.societyCode === soc.societyCode && u.role === 'member').length;
+        const socSubs = storedSubmissions.filter(s => s.societyCode === soc.societyCode);
+        const totalPointsEarned = socSubs.reduce((acc, sub) => acc + (sub.points || 0), 0);
+        const regDate = soc.registrationDate || (Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const daysSinceRegistration = Math.max(0, (Date.now() - regDate) / (1000 * 60 * 60 * 24));
+        const weeksActive = Math.floor(daysSinceRegistration / 7);
+        const isEvaluating = weeksActive < 2;
+        const safeMembers = Math.max(membersCount, 1);
+        const normalizedScore = isEvaluating ? 0 : (totalPointsEarned / (weeksActive * safeMembers));
+        let grade = 'C';
+        if (normalizedScore >= 10.0) grade = 'A';
+        else if (normalizedScore >= 4.0) grade = 'B';
+        return {
+          ...soc,
+          normalizedScore,
+          isEvaluating,
+          grade
+        };
+      });
+
+      const ranked = computed.filter(s => !s.isEvaluating).sort((a, b) => b.normalizedScore - a.normalizedScore);
+      
+      const myRow = ranked.findIndex(r => r.societyCode === user.societyCode);
+      if (myRow !== -1) {
+        setAdminRankData({ ...ranked[myRow], rank: myRow + 1 });
+      } else {
+        const myEval = computed.find(s => s.societyCode === user.societyCode);
+        setAdminRankData(myEval || { isEvaluating: true });
+      }
+    } catch(e) {}
+  };
 
   const societyOverviewFootprint = footprintEntries
     .filter(f => f.societyCode === user?.societyCode)
@@ -49,6 +100,18 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
           <Text style={styles.society}>{user?.societyName}</Text>
+          {user?.role === 'admin' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: '#E8F5E9', padding: 8, borderRadius: 6, alignSelf: 'flex-start' }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Your Society Code: </Text>
+              <Text style={{ fontSize: 14, fontWeight: 'bold', color: colors.primary, marginRight: 8 }}>{user?.societyCode}</Text>
+              <TouchableOpacity onPress={async () => {
+                await Clipboard.setStringAsync(user?.societyCode);
+                Alert.alert('Copied!', 'Society code copied to clipboard.', [{ text: 'OK' }]);
+              }}>
+                <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600', textDecorationLine: 'underline' }}>[Copy]</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={styles.cardsRow}>
@@ -72,6 +135,33 @@ const HomeScreen = ({ navigation }) => {
             )}
           </Card>
         </View>
+
+        {user?.role === 'admin' && adminRankData && (
+          <Card style={[styles.mainCard, { marginBottom: 20, borderTopWidth: 4, borderTopColor: colors.primary, overflow: 'hidden' }]}>
+            <Text style={styles.cardTitle}>Society Rank</Text>
+            {adminRankData.isEvaluating ? (
+              <View>
+                <Text style={styles.scoreText}>Under Evaluation 🕐</Text>
+                <Text style={{ fontSize: 13, color: '#888', marginBottom: 10, marginTop: 4 }}>Ranking begins after 2 weeks</Text>
+              </View>
+            ) : (
+              <View>
+                <View style={[styles.scoreRow, { marginBottom: 2 }]}>
+                  <Text style={styles.scoreText}>#{adminRankData.rank}</Text>
+                  <Text style={{ fontSize: 18, marginLeft: 10, fontWeight: 'bold', color: '#555' }}>
+                    {adminRankData.grade === 'A' ? '🟢' : adminRankData.grade === 'B' ? '🟡' : '🔴'} [{adminRankData.grade}]
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 10, fontWeight: '500' }}>
+                  {adminRankData.normalizedScore.toFixed(1)} pts/household/week
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity onPress={() => navigation.navigate('Community')} style={[styles.linkButton, { marginTop: 0 }]}>
+              <Text style={styles.linkText}>View Full Leaderboard →</Text>
+            </TouchableOpacity>
+          </Card>
+        )}
 
         {user?.role === 'member' && (
           <Card style={[styles.mainCard, { marginBottom: 20, borderTopWidth: 4, borderTopColor: getFootprintColor(footprint) }]}>

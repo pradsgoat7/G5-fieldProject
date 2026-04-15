@@ -97,20 +97,19 @@ export const AppProvider = ({ children }) => {
       throw new Error(`A society with this name already exists. If you are a resident, register as a Member.`);
     }
 
-    const newSociety = { societyCode, societyName, adminEmail: email };
+    const newSociety = { societyCode, societyName, adminEmail: email, registrationDate: Date.now() };
     const navSoc = [...societies, newSociety];
     setSocieties(navSoc);
+    console.log("Generated society code:", societyCode);
     await storage.saveSocieties(navSoc);
+    console.log("Successfully saved society to AsyncStorage");
 
     const newUser = { id: Date.now().toString(), name, email, password, role: 'admin', societyCode, societyName };
     const navUsers = [...allUsers, newUser];
     setAllUsers(navUsers);
     await storage.saveAllUsers(navUsers);
 
-    setUser(newUser);
-    setIsAuthenticated(true);
-    await storage.saveLoggedInUser(newUser);
-
+    // Do not auto-login admins so they can see the Success Screen and then proceed to Login manually
     return societyCode;
   };
 
