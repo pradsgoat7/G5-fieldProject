@@ -11,11 +11,11 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 
 const calcItems = [
-  { id: 'bottles', label: 'Plastic Bottles', weight: 0.03, icon: 'bottle-soda-outline' },
-  { id: 'bags', label: 'Plastic Bags', weight: 0.01, icon: 'shopping-outline' },
-  { id: 'packaging', label: 'Food Packaging', weight: 0.05, icon: 'food-takeout-box-outline' },
-  { id: 'straws', label: 'Straws', weight: 0.003, icon: 'cup-water' },
-  { id: 'cups', label: 'Disposable Cups', weight: 0.01, icon: 'cup-outline' },
+  { id: 'bottles', label: 'Plastic Bottles (♻️ Recyclable)', weight: 0.03, icon: 'bottle-soda-outline' },
+  { id: 'bags', label: 'Plastic Bags (🚫 Non-Recyclable)', weight: 0.01, icon: 'shopping-outline' },
+  { id: 'packaging', label: 'Food Packaging (🚫 Non-Recyclable)', weight: 0.05, icon: 'food-takeout-box-outline' },
+  { id: 'straws', label: 'Straws (🚫 Non-Recyclable)', weight: 0.003, icon: 'cup-water' },
+  { id: 'cups', label: 'Disposable Cups (🚫 Non-Recyclable)', weight: 0.01, icon: 'cup-outline' },
   { id: 'others', label: 'Other Plastic Items', weight: 0.04, icon: 'archive-outline' },
 ];
 

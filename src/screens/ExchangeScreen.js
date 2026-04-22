@@ -8,11 +8,33 @@ import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
 
-const PLASTIC_TYPES = ['PET Bottles', 'HDPE Containers', 'Plastic Bags', 'Mixed Plastic'];
+const RECYCLABLE_TYPES = [
+  { id: 'pet', name: 'PET Bottles', desc: 'water bottles, cold drink bottles' },
+  { id: 'hdpe', name: 'HDPE Containers', desc: 'milk jugs, shampoo bottles' },
+  { id: 'ldpe', name: 'LDPE Bags', desc: 'clean zip-lock bags, bread bags' },
+  { id: 'pp', name: 'PP Containers', desc: 'yogurt cups, medicine bottles' },
+  { id: 'glass', name: 'Glass Bottles', desc: 'ketchup, juice glass bottles' },
+  { id: 'cardboard', name: 'Cardboard / Paper', desc: 'clean cardboard boxes' },
+  { id: 'metal', name: 'Metal Cans', desc: 'aluminium cans, tin cans' },
+  { id: 'others_rec', name: 'Others (Recyclable)', desc: 'specify custom type' }
+];
+
+const NON_RECYCLABLE_TYPES = [
+  { id: 'mlp', name: 'MLP Packaging', desc: 'multi-layer chips packets, wrappers' },
+  { id: 'thermocol', name: 'Thermocol / EPS', desc: 'styrofoam cups, packaging foam' },
+  { id: 'pvc', name: 'PVC Plastic', desc: 'pipes, cling wrap, blister packs' },
+  { id: 'contaminated', name: 'Contaminated Plastic', desc: 'soiled food containers, dirty bags' },
+  { id: 'composite', name: 'Composite Packaging', desc: 'tetra packs, juice cartons' },
+  { id: 'cutlery', name: 'Disposable Cutlery', desc: 'plastic spoons, forks, straws' },
+  { id: 'thin_film', name: 'Thin Plastic Films', desc: 'carry bags, shrink wrap' },
+  { id: 'others_non_rec', name: 'Others (Non-Recyclable)', desc: 'specify custom type' }
+];
 
 const ExchangeScreen = () => {
   const { user } = useContext(AppContext);
-  const [selectedType, setSelectedType] = useState('PET Bottles');
+  const [category, setCategory] = useState(null);
+  const [selectedType, setSelectedType] = useState(null);
+  const [customType, setCustomType] = useState('');
   const [quantity, setQuantity] = useState('');
   const [societySubmissions, setSocietySubmissions] = useState([]);
   const [points, setPoints] = useState(0);
@@ -49,19 +71,38 @@ const ExchangeScreen = () => {
   }, [user]);
 
   const submitExchange = async () => {
+    if (!category) {
+      Alert.alert('Error', 'Please select a category');
+      return;
+    }
+    if (!selectedType) {
+      Alert.alert('Error', 'Please select a plastic type');
+      return;
+    }
+    const isOthers = selectedType.id === 'others_rec' || selectedType.id === 'others_non_rec';
+    if (isOthers && !customType.trim()) {
+      Alert.alert('Error', 'Please describe the plastic type');
+      return;
+    }
+    
     const kg = parseFloat(quantity);
     if (!kg || kg <= 0) {
       Alert.alert('Invalid Quantity', 'Please enter a valid weight in kg.');
       return;
     }
 
-    const earnedPoints = kg * 100;
+    const mf = category === 'recyclable' ? 1.5 : 0.5;
+    const earnedPoints = kg * 10 * mf;
+    const plasticTypeToSave = isOthers ? customType.trim() : selectedType.name;
     
     try {
       await addDoc(collection(db, "exchange_submissions"), {
         societyCode: user.societyCode,
-        plasticType: selectedType,
+        category: category,
+        plasticType: plasticTypeToSave,
         kg,
+        impactFactor: 10,
+        multiplyingFactor: mf,
         pointsEarned: earnedPoints,
         submittedBy: user.uid,
         date: serverTimestamp()
@@ -75,16 +116,19 @@ const ExchangeScreen = () => {
         societyCode: user.societyCode,
         type: 'activity',
         title: 'New Exchange Submission',
-        description: `Admin submitted ${kg} kg of ${selectedType} and earned ${earnedPoints} points!`,
+        description: `Admin submitted ${kg} kg of ${plasticTypeToSave} and earned ${earnedPoints} points!`,
         timestamp: Date.now()
       });
 
       Alert.alert(
         'Success!', 
-        `You submitted ${kg} kg of ${selectedType} and earned ${earnedPoints} points!`,
+        `You submitted ${kg} kg of ${plasticTypeToSave} and earned ${earnedPoints} points!`,
         [{ text: 'Awesome' }]
       );
       
+      setCategory(null);
+      setSelectedType(null);
+      setCustomType('');
       setQuantity('');
     } catch (e) {
       console.error(e);
@@ -116,20 +160,63 @@ const ExchangeScreen = () => {
 
         <Text style={styles.sectionTitle}>Log Submission</Text>
         <Card style={styles.formCard}>
-          <Text style={styles.label}>Plastic Type</Text>
-          <View style={styles.typeSelector}>
-            {PLASTIC_TYPES.map(type => (
-              <TouchableOpacity
-                key={type}
-                style={[styles.typeOption, selectedType === type && styles.typeOptionSelected]}
-                onPress={() => setSelectedType(type)}
-              >
-                <Text style={[styles.typeText, selectedType === type && styles.typeTextSelected]}>
-                  {type}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={styles.label}>Select Category</Text>
+          <View style={styles.categoryContainer}>
+            <TouchableOpacity 
+              style={[styles.categoryCard, category === 'recyclable' && styles.categoryCardSelectedRecyclable]}
+              onPress={() => { setCategory('recyclable'); setSelectedType(null); setCustomType(''); }}
+            >
+              <Text style={styles.categoryTitle}>♻️ Recyclable</Text>
+              <Text style={styles.categorySubtitle}>Earn 1.5x points</Text>
+              <Text style={styles.categoryTap}>[tap to select]</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.categoryCard, category === 'non_recyclable' && styles.categoryCardSelectedNonRecyclable]}
+              onPress={() => { setCategory('non_recyclable'); setSelectedType(null); setCustomType(''); }}
+            >
+              <Text style={styles.categoryTitle}>🚫 Non-Recyclable</Text>
+              <Text style={styles.categorySubtitle}>Earn 0.5x points</Text>
+              <Text style={styles.categoryTap}>[tap to select]</Text>
+            </TouchableOpacity>
           </View>
+
+          {category && (
+            <>
+              <Text style={styles.label}>Plastic Type</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipContainer}>
+                {(category === 'recyclable' ? RECYCLABLE_TYPES : NON_RECYCLABLE_TYPES).map(t => {
+                  const isSelected = selectedType?.id === t.id;
+                  const isRecyclable = category === 'recyclable';
+                  return (
+                    <TouchableOpacity 
+                      key={t.id} 
+                      style={[
+                        styles.chip, 
+                        isSelected && (isRecyclable ? styles.chipSelectedRecyclable : styles.chipSelectedNonRecyclable)
+                      ]}
+                      onPress={() => setSelectedType(t)}
+                    >
+                      <Text style={[styles.chipTitle, isSelected && (isRecyclable ? styles.chipTextSelected : styles.chipTextSelected)]}>{t.name}</Text>
+                      <Text style={[styles.chipDesc, isSelected && (isRecyclable ? styles.chipTextSelected : styles.chipTextSelected)]}>{t.desc}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          {selectedType && (selectedType.id === 'others_rec' || selectedType.id === 'others_non_rec') && (
+            <>
+               <Text style={styles.label}>Describe the plastic type</Text>
+               <TextInput 
+                 style={styles.input} 
+                 placeholder="e.g., Bubble wrap, acrylic container..." 
+                 value={customType} 
+                 onChangeText={setCustomType} 
+               />
+            </>
+          )}
 
           <Text style={styles.label}>Quantity (kg)</Text>
           <TextInput
@@ -145,7 +232,29 @@ const ExchangeScreen = () => {
             <Text style={styles.dateText}>{new Date().toLocaleDateString()}</Text>
           </View>
 
-          <Button title="Submit for Points" onPress={submitExchange} style={{ marginTop: 10 }} />
+          {category && (
+            <View style={[styles.previewCard, category === 'recyclable' ? styles.previewRecyclable : styles.previewNonRecyclable]}>
+              <Text style={styles.previewTitle}>📊 Points Preview</Text>
+              <Text style={styles.previewText}>Category: {category === 'recyclable' ? 'Recyclable (MF: 1.5x)' : 'Non-Recyclable (MF: 0.5x)'}</Text>
+              <Text style={styles.previewText}>Plastic: {selectedType ? (selectedType.id.startsWith('others') ? (customType || '...') : selectedType.name) : '-'}</Text>
+              <Text style={styles.previewText}>Quantity: {quantity ? quantity + ' kg' : '-' }</Text>
+              
+              {(parseFloat(quantity) > 0) ? (
+                <>
+                  <Text style={styles.previewPoints}>Points = {parseFloat(quantity)} × 10 × {category === 'recyclable' ? 1.5 : 0.5} = {parseFloat(quantity) * 10 * (category === 'recyclable' ? 1.5 : 0.5)} points</Text>
+                  <Text style={styles.previewMessage}>
+                    {category === 'recyclable' 
+                      ? '✅ Great choice! Recyclable plastic earns higher rewards.' 
+                      : '⚠️ Non-recyclable plastic earns fewer rewards. Consider reducing usage.'}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.previewEmpty}>Enter quantity to see points</Text>
+              )}
+            </View>
+          )}
+
+          <Button title="Submit for Points" onPress={submitExchange} style={{ marginTop: 20 }} />
         </Card>
 
         <Text style={styles.sectionTitle}>My Submissions</Text>
@@ -154,18 +263,27 @@ const ExchangeScreen = () => {
         ) : societySubmissions.length === 0 ? (
           <Text style={styles.emptyText}>No submissions yet.</Text>
         ) : (
-          societySubmissions.map((sub) => (
-            <Card key={sub.id} style={styles.subCard}>
-              <View style={styles.subHeader}>
-                <Text style={styles.subType}>{sub.plasticType}</Text>
-                <Text style={styles.subPoints}>+{sub.pointsEarned} pts</Text>
-              </View>
-              <View style={styles.subDetails}>
-                <Text style={styles.subDate}>{sub.date?.toDate ? sub.date.toDate().toLocaleDateString() : 'Just now'}</Text>
-                <Text style={styles.subKg}>{sub.kg} kg</Text>
-              </View>
-            </Card>
-          ))
+          societySubmissions.map((sub) => {
+            const isLegacy = !sub.category;
+            const isRecyclable = sub.category === 'recyclable';
+            const bgColors = isLegacy ? '#EEEEEE' : (isRecyclable ? '#E8F5E9' : '#FFF3E0');
+            const titleText = isLegacy ? `🗄️ ${sub.plasticType}` : (isRecyclable ? `♻️ ${sub.plasticType}` : `🚫 ${sub.plasticType}`);
+            const badgeText = isLegacy ? 'Legacy Submission' : (isRecyclable ? 'Recyclable 🟢' : 'Non-Recyclable 🔴');
+            const mfText = isLegacy ? '' : ` (MF: ${sub.multiplyingFactor}x)`;
+
+            return (
+              <Card key={sub.id} style={styles.subCard}>
+                <View style={[styles.subHeader, { marginBottom: 10 }]}>
+                  <Text style={styles.subType}>{titleText}</Text>
+                  <View style={[styles.badgeContainer, { backgroundColor: bgColors }]}>
+                    <Text style={styles.badgeText}>{badgeText}</Text>
+                  </View>
+                </View>
+                <Text style={styles.subDate}>{sub.kg} kg  •  {sub.date?.toDate ? sub.date.toDate().toLocaleDateString() : 'Just now'}</Text>
+                <Text style={styles.subPointsText}>Points earned: +{sub.pointsEarned}{mfText}</Text>
+              </Card>
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -289,6 +407,119 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  categoryContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  categoryCard: {
+    width: '48%',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  categoryCardSelectedRecyclable: {
+    borderColor: '#4CAF50',
+    backgroundColor: '#E8F5E9',
+  },
+  categoryCardSelectedNonRecyclable: {
+    borderColor: '#FF9800',
+    backgroundColor: '#FFF3E0',
+  },
+  categoryTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+  },
+  categorySubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginVertical: 4,
+  },
+  categoryTap: {
+    fontSize: 10,
+    color: '#9E9E9E',
+  },
+  chipContainer: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    padding: 10,
+    marginRight: 10,
+    backgroundColor: '#FAFAFA',
+    minWidth: 120,
+  },
+  chipSelectedRecyclable: {
+    borderColor: '#4CAF50',
+    backgroundColor: '#4CAF50',
+  },
+  chipSelectedNonRecyclable: {
+    borderColor: '#FF9800',
+    backgroundColor: '#FF9800',
+  },
+  chipTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  chipDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  chipTextSelected: {
+    color: '#FFF',
+  },
+  previewCard: {
+    marginTop: 20,
+    padding: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  previewRecyclable: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#C8E6C9',
+  },
+  previewNonRecyclable: {
+    backgroundColor: '#FFF3E0',
+    borderColor: '#FFE0B2',
+  },
+  previewTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: colors.textPrimary,
+  },
+  previewText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  previewPoints: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 10,
+    color: colors.textPrimary,
+  },
+  previewMessage: {
+    fontSize: 12,
+    marginTop: 8,
+    fontStyle: 'italic',
+    color: colors.textSecondary,
+  },
+  previewEmpty: {
+    fontSize: 14,
+    marginTop: 10,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
   subCard: {
     padding: 15,
     marginBottom: 10,
@@ -296,29 +527,32 @@ const styles = StyleSheet.create({
   subHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    alignItems: 'center',
   },
   subType: {
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.textPrimary,
   },
-  subPoints: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.success,
+  badgeContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  subDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  badgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
   },
   subDate: {
     fontSize: 14,
     color: colors.textSecondary,
   },
-  subKg: {
+  subPointsText: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.success,
+    fontWeight: 'bold',
+    marginTop: 8,
   },
   emptyText: {
     textAlign: 'center',

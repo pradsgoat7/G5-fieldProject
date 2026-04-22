@@ -14,13 +14,32 @@ const VENDORS = [
   { id: '3', name: 'CleanEarth Waste Mgmt', rating: '4.6' }
 ];
 
-const PLASTIC_TYPES = ['PET Bottles', 'HDPE Constants', 'Plastic Bags', 'Mixed'];
+const RECYCLABLE_TYPES = [
+  { id: 'pet', name: 'PET Bottles' },
+  { id: 'hdpe', name: 'HDPE Containers' },
+  { id: 'ldpe', name: 'LDPE Bags' },
+  { id: 'pp', name: 'PP Containers' },
+  { id: 'glass', name: 'Glass Bottles' },
+  { id: 'cardboard', name: 'Cardboard / Paper' },
+  { id: 'metal', name: 'Metal Cans' }
+];
+
+const NON_RECYCLABLE_TYPES = [
+  { id: 'mlp', name: 'MLP Packaging' },
+  { id: 'thermocol', name: 'Thermocol / EPS' },
+  { id: 'pvc', name: 'PVC Plastic' },
+  { id: 'contaminated', name: 'Contaminated Plastic' },
+  { id: 'composite', name: 'Composite Packaging' },
+  { id: 'cutlery', name: 'Disposable Cutlery' },
+  { id: 'thin_film', name: 'Thin Plastic Films' }
+];
 const TIME_SLOTS = ['Morning (8am-12pm)', 'Afternoon (12pm-4pm)', 'Evening (4pm-7pm)'];
 
 const VendorsScreen = () => {
   const { user } = useContext(AppContext);
   const [vendor, setVendor] = useState(VENDORS[0].name);
-  const [types, setTypes] = useState(['PET Bottles']);
+  const [recyclableTypes, setRecyclableTypes] = useState([]);
+  const [nonRecyclableTypes, setNonRecyclableTypes] = useState([]);
   const [kg, setKg] = useState('');
   const [timeSlot, setTimeSlot] = useState(TIME_SLOTS[0]);
   const [instructions, setInstructions] = useState('');
@@ -45,27 +64,39 @@ const VendorsScreen = () => {
     return () => unsubscribe();
   }, [user]);
 
-  const toggleType = (t) => {
-    if (types.includes(t)) {
-      setTypes(types.filter(i => i !== t));
+  const toggleRecyclable = (name) => {
+    if (recyclableTypes.includes(name)) {
+      setRecyclableTypes(recyclableTypes.filter(i => i !== name));
     } else {
-      setTypes([...types, t]);
+      setRecyclableTypes([...recyclableTypes, name]);
+    }
+  };
+
+  const toggleNonRecyclable = (name) => {
+    if (nonRecyclableTypes.includes(name)) {
+      setNonRecyclableTypes(nonRecyclableTypes.filter(i => i !== name));
+    } else {
+      setNonRecyclableTypes([...nonRecyclableTypes, name]);
     }
   };
 
   const schedulePickup = async () => {
-    if (!kg || types.length === 0) {
+    if (!kg || (recyclableTypes.length === 0 && nonRecyclableTypes.length === 0)) {
       Alert.alert('Error', 'Please enter estimated quantity and select at least one plastic type.');
       return;
     }
+
+    const mergedTypes = [...recyclableTypes, ...nonRecyclableTypes];
 
     try {
       await addDoc(collection(db, "pickups"), {
         societyCode: user.societyCode,
         vendorName: vendor,
         vendor: vendor, // keeping vendor property for UI compatibility
-        plasticTypes: types,
-        type: types.join(', '), // compatibility
+        recyclableTypes,
+        nonRecyclableTypes,
+        plasticTypes: mergedTypes,
+        type: mergedTypes.join(', '), // compatibility
         estimatedKg: parseFloat(kg),
         kg: parseFloat(kg), // compatibility
         date: new Date().toISOString().split('T')[0], // compatibility
@@ -132,19 +163,35 @@ const VendorsScreen = () => {
             ))}
           </ScrollView>
 
-          <Text style={styles.label}>Plastic Type (Multi-select)</Text>
-          <View style={styles.checkboxContainer}>
-            {PLASTIC_TYPES.map(t => (
-              <TouchableOpacity key={t} style={styles.checkboxRow} onPress={() => toggleType(t)}>
-                <MaterialCommunityIcons 
-                  name={types.includes(t) ? 'checkbox-marked' : 'checkbox-blank-outline'} 
-                  size={24} 
-                  color={colors.primary} 
-                />
-                <Text style={styles.checkboxLabel}>{t}</Text>
+          <Text style={styles.label}>Recyclable Plastics (Multi-select)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {RECYCLABLE_TYPES.map(t => (
+              <TouchableOpacity
+                key={t.id}
+                style={[styles.pill, recyclableTypes.includes(t.name) && styles.pillSelectedRecyclable]}
+                onPress={() => toggleRecyclable(t.name)}
+              >
+                <Text style={[styles.pillText, recyclableTypes.includes(t.name) && styles.pillTextSelected]}>
+                  {t.name}
+                </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
+
+          <Text style={styles.label}>Non-Recyclable Plastics (Multi-select)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {NON_RECYCLABLE_TYPES.map(t => (
+              <TouchableOpacity
+                key={t.id}
+                style={[styles.pill, nonRecyclableTypes.includes(t.name) && styles.pillSelectedNonRecyclable]}
+                onPress={() => toggleNonRecyclable(t.name)}
+              >
+                <Text style={[styles.pillText, nonRecyclableTypes.includes(t.name) && styles.pillTextSelected]}>
+                  {t.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
           <Text style={styles.label}>Estimated Quantity (kg)</Text>
           <TextInput
@@ -332,21 +379,21 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: 'bold',
   },
-  checkboxContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
+  pillSelectedRecyclable: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
   },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '50%',
-    marginBottom: 10,
+  pillSelectedNonRecyclable: {
+    backgroundColor: '#FF9800',
+    borderColor: '#FF9800',
   },
-  checkboxLabel: {
-    marginLeft: 8,
+  pillText: {
+    color: colors.textSecondary,
     fontSize: 14,
-    color: colors.textPrimary,
+  },
+  pillTextSelected: {
+    color: '#FFF',
+    fontWeight: 'bold',
   },
   sectionTitle: {
     fontSize: 18,

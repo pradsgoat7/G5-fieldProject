@@ -12,6 +12,8 @@ const SustainabilityReportScreen = () => {
   const [stats, setStats] = useState({
     totalPlasticLogged: 0,
     totalKgRecycled: 0,
+    totalRecyclableKg: 0,
+    totalNonRecyclableKg: 0,
     pointsEarned: 0,
     pickupsCompleted: 0
   });
@@ -63,7 +65,9 @@ const SustainabilityReportScreen = () => {
       const societySubmissions = snapshot.docs.map(d => d.data());
       const totalKgRecycled = societySubmissions.reduce((acc, curr) => acc + (curr.kg || 0), 0);
       const pointsEarned = societySubmissions.reduce((acc, curr) => acc + (curr.pointsEarned || 0), 0);
-      setStats(prev => ({...prev, totalKgRecycled, pointsEarned}));
+      const totalRecyclableKg = societySubmissions.reduce((acc, curr) => curr.category === 'recyclable' ? acc + (curr.kg || 0) : acc, 0);
+      const totalNonRecyclableKg = societySubmissions.reduce((acc, curr) => curr.category === 'non_recyclable' ? acc + (curr.kg || 0) : acc, 0);
+      setStats(prev => ({...prev, totalKgRecycled, totalRecyclableKg, totalNonRecyclableKg, pointsEarned}));
     });
 
     const unsubPickups = onSnapshot(query(collection(db, "pickups"), where("societyCode", "==", user.societyCode)), (snapshot) => {
@@ -122,6 +126,12 @@ const SustainabilityReportScreen = () => {
             <Text style={styles.statLabel}>Pickups Completed</Text>
           </Card>
         </View>
+
+        <Text style={styles.sectionTitle}>Submission Breakdown</Text>
+        <Card style={styles.breakdownCard}>
+          <Text style={styles.breakdownText}>♻️ {stats.totalRecyclableKg.toFixed(1)} kg Recyclable submitted</Text>
+          <Text style={styles.breakdownText}>🚫 {stats.totalNonRecyclableKg.toFixed(1)} kg Non-Recyclable submitted</Text>
+        </Card>
 
         <Text style={styles.sectionTitle}>Personal Grade</Text>
         <Card style={styles.gradeCard}>
@@ -238,6 +248,16 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 4,
+  },
+  breakdownCard: {
+    padding: 15,
+    marginBottom: 20,
+  },
+  breakdownText: {
+    fontSize: 16,
+    color: colors.textPrimary,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   gradeCard: {
     padding: 25,
