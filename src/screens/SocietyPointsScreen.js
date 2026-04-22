@@ -1,12 +1,45 @@
-import React, { useContext } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 
 const SocietyPointsScreen = () => {
-  const { points, societySubmissions, societyRedemptions } = useContext(AppContext);
+  const { user } = useContext(AppContext);
+  const [points, setPoints] = useState(0);
+  const [societySubmissions, setSocietySubmissions] = useState([]);
+  const [societyRedemptions, setSocietyRedemptions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubSociety = onSnapshot(doc(db, "societies", user.societyCode), (d) => {
+      if (d.exists()) {
+        setPoints(d.data().totalPointsEarned || 0);
+      }
+    });
+
+    const unsubSubmissions = onSnapshot(query(collection(db, "exchange_submissions"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      const subs = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setSocietySubmissions(subs.sort((a, b) => b.date - a.date));
+    });
+
+    const unsubRedemptions = onSnapshot(query(collection(db, "redemptions"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      const redemps = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setSocietyRedemptions(redemps.sort((a, b) => b.date - a.date));
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubSociety();
+      unsubSubmissions();
+      unsubRedemptions();
+    };
+  }, [user]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -16,6 +49,7 @@ const SocietyPointsScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {isLoading && <ActivityIndicator size="large" color={colors.primary} style={{marginBottom: 15}} />}
         <View style={styles.balanceContainer}>
           <Text style={styles.balanceLabel}>Society Balance</Text>
           <View style={styles.pointsRow}>

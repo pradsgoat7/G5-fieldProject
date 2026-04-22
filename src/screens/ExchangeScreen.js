@@ -1,6 +1,8 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, Alert, TouchableOpacity } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, increment, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
@@ -9,11 +11,44 @@ import Button from '../components/Button';
 const PLASTIC_TYPES = ['PET Bottles', 'HDPE Containers', 'Plastic Bags', 'Mixed Plastic'];
 
 const ExchangeScreen = () => {
-  const { points, addSubmission, societySubmissions, logActivity } = useContext(AppContext);
+  const { user } = useContext(AppContext);
   const [selectedType, setSelectedType] = useState('PET Bottles');
   const [quantity, setQuantity] = useState('');
+  const [societySubmissions, setSocietySubmissions] = useState([]);
+  const [points, setPoints] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const submitExchange = () => {
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, "exchange_submissions"),
+      where("societyCode", "==", user.societyCode),
+      orderBy("date", "desc")
+    );
+    
+    const unsubscribeSubmissions = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setSocietySubmissions(data);
+    }, (error) => {
+      console.log("Error fetching submissions", error);
+    });
+
+    const societyDocRef = doc(db, "societies", user.societyCode);
+    const unsubscribeSociety = onSnapshot(societyDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setPoints(docSnap.data().totalPointsEarned || 0);
+      }
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubscribeSubmissions();
+      unsubscribeSociety();
+    };
+  }, [user]);
+
+  const submitExchange = async () => {
     const kg = parseFloat(quantity);
     if (!kg || kg <= 0) {
       Alert.alert('Invalid Quantity', 'Please enter a valid weight in kg.');
@@ -22,24 +57,39 @@ const ExchangeScreen = () => {
 
     const earnedPoints = kg * 100;
     
-    Alert.alert(
-      'Success!', 
-      `You submitted ${kg} kg of ${selectedType} and earned ${earnedPoints} points!`,
-      [{ text: 'Awesome' }]
-    );
+    try {
+      await addDoc(collection(db, "exchange_submissions"), {
+        societyCode: user.societyCode,
+        plasticType: selectedType,
+        kg,
+        pointsEarned: earnedPoints,
+        submittedBy: user.uid,
+        date: serverTimestamp()
+      });
 
-    const newSubmission = {
-      id: Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
-      type: selectedType,
-      kg,
-      points: earnedPoints
-    };
-    
-    addSubmission(newSubmission);
-    logActivity(`Submitted ${kg} kg of ${selectedType} – +${earnedPoints} pts`);
-    
-    setQuantity('');
+      await updateDoc(doc(db, "societies", user.societyCode), {
+        totalPointsEarned: increment(earnedPoints)
+      });
+      
+      await addDoc(collection(db, "announcements"), {
+        societyCode: user.societyCode,
+        type: 'activity',
+        title: 'New Exchange Submission',
+        description: `Admin submitted ${kg} kg of ${selectedType} and earned ${earnedPoints} points!`,
+        timestamp: Date.now()
+      });
+
+      Alert.alert(
+        'Success!', 
+        `You submitted ${kg} kg of ${selectedType} and earned ${earnedPoints} points!`,
+        [{ text: 'Awesome' }]
+      );
+      
+      setQuantity('');
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'Could not save data. Check your connection.');
+    }
   };
 
   return (
@@ -57,7 +107,11 @@ const ExchangeScreen = () => {
 
         <Card style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Total Points Balance</Text>
-          <Text style={styles.balanceValue}>{points} pts</Text>
+          {isLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={styles.balanceValue}>{points} pts</Text>
+          )}
         </Card>
 
         <Text style={styles.sectionTitle}>Log Submission</Text>
@@ -95,17 +149,19 @@ const ExchangeScreen = () => {
         </Card>
 
         <Text style={styles.sectionTitle}>My Submissions</Text>
-        {societySubmissions.length === 0 ? (
+        {isLoading ? (
+          <ActivityIndicator size="large" color={colors.primary} />
+        ) : societySubmissions.length === 0 ? (
           <Text style={styles.emptyText}>No submissions yet.</Text>
         ) : (
           societySubmissions.map((sub) => (
             <Card key={sub.id} style={styles.subCard}>
               <View style={styles.subHeader}>
-                <Text style={styles.subType}>{sub.type}</Text>
-                <Text style={styles.subPoints}>+{sub.points} pts</Text>
+                <Text style={styles.subType}>{sub.plasticType}</Text>
+                <Text style={styles.subPoints}>+{sub.pointsEarned} pts</Text>
               </View>
               <View style={styles.subDetails}>
-                <Text style={styles.subDate}>{sub.date}</Text>
+                <Text style={styles.subDate}>{sub.date?.toDate ? sub.date.toDate().toLocaleDateString() : 'Just now'}</Text>
                 <Text style={styles.subKg}>{sub.kg} kg</Text>
               </View>
             </Card>

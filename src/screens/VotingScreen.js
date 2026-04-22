@@ -1,12 +1,12 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert, TextInput, Platform } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert, TextInput, Platform, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
-import * as storage from '../services/storageService';
 
 const VotingScreen = () => {
   const { user } = useContext(AppContext);
@@ -20,35 +20,30 @@ const VotingScreen = () => {
   const [newPollQuestion, setNewPollQuestion] = useState('');
   const [customDates, setCustomDates] = useState(['', '']);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadData();
-    }, [user])
-  );
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = async () => {
-    try {
-      const allPolls = await storage.getCommunityPolls() || [];
-      const societyPolls = allPolls.filter(p => p.societyCode === user.societyCode);
-      setPolls(societyPolls.sort((a,b) => b.createdAt - a.createdAt));
+  useEffect(() => {
+    if (!user) return;
 
-      const allUsers = await storage.getAllUsers() || [];
-      const mems = allUsers.filter(u => u.societyCode === user.societyCode && u.role === 'member');
-      setSocietyMemberCount(Math.max(mems.length, 1));
+    const unsubSocieties = onSnapshot(doc(db, "societies", user.societyCode), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSocietyMemberCount(Math.max(data.memberCount || 1, 1));
+        setSocietyPoints(data.totalPointsEarned || 0);
+      }
+    });
 
-      const allSubmissions = await storage.getAllSubmissions() || [];
-      const mySubmissions = allSubmissions.filter(s => s.societyCode === user.societyCode);
-      const earned = mySubmissions.reduce((acc, curr) => acc + (curr.points || 0), 0);
-      
-      const allRedemptions = await storage.getAllRedemptions() || [];
-      const myRedemptions = allRedemptions.filter(r => r.societyCode === user.societyCode);
-      const spent = myRedemptions.reduce((acc, curr) => acc + (curr.pointsSpent || 0), 0);
-      
-      setSocietyPoints(earned - spent);
-    } catch(e) {
-      console.log(e);
-    }
-  };
+    const unsubPolls = onSnapshot(query(collection(db, "polls"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setPolls(data.sort((a,b) => b.createdAt - a.createdAt));
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubSocieties();
+      unsubPolls();
+    };
+  }, [user]);
 
   const REWARD_OPTIONS = [
     { label: 'Water Bill Discount', cost: 10000 },
@@ -86,8 +81,7 @@ const VotingScreen = () => {
         finalOptions = validDates;
       }
 
-      const newPoll = {
-         id: Date.now().toString(),
+      await addDoc(collection(db, "polls"), {
          societyCode: user.societyCode,
          question: newPollQuestion.trim(),
          type: newPollType, 
@@ -97,16 +91,12 @@ const VotingScreen = () => {
          endsAt: Date.now() + 3 * 24 * 60 * 60 * 1000, 
          status: 'active', 
          finalDecision: null
-      };
+      });
 
-      const allPolls = await storage.getCommunityPolls() || [];
-      await storage.saveCommunityPolls([...allPolls, newPoll]);
-      
       showAlert('Success', 'Poll created successfully!');
       setIsCreating(false);
       setNewPollQuestion('');
       setCustomDates(['', '']);
-      loadData();
     } catch(err) {
       console.log('Save Poll Error:', err);
       showAlert('Error', 'Failed to save the poll correctly.');
@@ -114,34 +104,39 @@ const VotingScreen = () => {
   };
 
   const handleVote = async (pollId, optionIndex) => {
-    const allPolls = await storage.getCommunityPolls() || [];
-    const pollIndex = allPolls.findIndex(p => p.id === pollId);
-    if (pollIndex === -1) return;
+    try {
+      const pollRef = doc(db, "polls", pollId);
+      const poll = polls.find(p => p.id === pollId);
+      if (!poll) return;
 
-    allPolls[pollIndex].votes[user.id] = optionIndex;
-    await storage.saveCommunityPolls(allPolls);
-    loadData();
-    showAlert('Voted!', 'Your vote has been cast. Thank you!');
+      const newVotes = { ...poll.votes, [user.uid]: optionIndex };
+      await updateDoc(pollRef, { votes: newVotes });
+      showAlert('Voted!', 'Your vote has been cast. Thank you!');
+    } catch (e) {
+      console.log(e);
+      showAlert('Error', 'Could not cast vote.');
+    }
   };
 
   const finalizeTie = async (pollId, chosenOptionLabel) => {
-    const allPolls = await storage.getCommunityPolls() || [];
-    const pollIndex = allPolls.findIndex(p => p.id === pollId);
-    if (pollIndex === -1) return;
-
-    allPolls[pollIndex].status = 'completed';
-    allPolls[pollIndex].finalDecision = chosenOptionLabel;
-    
-    await storage.saveCommunityPolls(allPolls);
-    loadData();
-    showAlert('Resolved', 'You successfully resolved the tie!');
+    try {
+      const pollRef = doc(db, "polls", pollId);
+      await updateDoc(pollRef, {
+         status: 'completed',
+         finalDecision: chosenOptionLabel
+      });
+      showAlert('Resolved', 'You successfully resolved the tie!');
+    } catch (e) {
+      console.log(e);
+      showAlert('Error', 'Could not resolve tie.');
+    }
   };
 
   const renderPoll = (poll) => {
     const isExpired = Date.now() > poll.endsAt;
-    const voteKeys = Object.keys(poll.votes);
+    const voteKeys = Object.keys(poll.votes || {});
     const totalVotes = voteKeys.length;
-    const hasVoted = voteKeys.includes(user.id);
+    const hasVoted = voteKeys.includes(user.uid);
     const requiredVotes = Math.ceil(societyMemberCount * 0.4);
     
     const isCompleted = poll.status === 'completed' || isExpired;
@@ -150,7 +145,7 @@ const VotingScreen = () => {
 
     // Calculate options counts
     const optionCounts = poll.options.map((opt, idx) => {
-      const count = Object.values(poll.votes).filter(v => v === idx).length;
+      const count = Object.values(poll.votes || {}).filter(v => v === idx).length;
       return { opt, count, idx };
     });
 
@@ -197,7 +192,7 @@ const VotingScreen = () => {
         <View style={{ marginTop: 15 }}>
           {optionCounts.map(item => {
             const pct = totalVotes > 0 ? ((item.count / totalVotes) * 100).toFixed(0) : 0;
-            const isUserChoice = poll.votes[user.id] === item.idx;
+            const isUserChoice = (poll.votes || {})[user.uid] === item.idx;
 
             return (
               <View key={item.idx} style={styles.optionContainer}>
@@ -236,6 +231,8 @@ const VotingScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+
+        {isLoading && <ActivityIndicator size="large" color={colors.primary} style={{marginBottom: 15}} />}
 
         {user?.role === 'admin' && (
           <View style={styles.adminControls}>

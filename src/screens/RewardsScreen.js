@@ -1,6 +1,8 @@
-import React, { useContext } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, Alert, TouchableOpacity } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, increment, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
@@ -15,7 +17,39 @@ const REWARDS = [
 ];
 
 const RewardsScreen = ({ navigation }) => {
-  const { points, addRedemption, redemptions, logActivity } = useContext(AppContext);
+  const { user } = useContext(AppContext);
+  const [points, setPoints] = useState(0);
+  const [redemptions, setRedemptions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const q = query(
+      collection(db, "redemptions"),
+      where("societyCode", "==", user.societyCode),
+      orderBy("date", "desc")
+    );
+    const unsubscribeRedemptions = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setRedemptions(data);
+    }, (error) => {
+      console.log("Error fetching redemptions", error);
+    });
+
+    const societyDocRef = doc(db, "societies", user.societyCode);
+    const unsubscribeSociety = onSnapshot(societyDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setPoints(docSnap.data().totalPointsEarned || 0);
+      }
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubscribeRedemptions();
+      unsubscribeSociety();
+    };
+  }, [user]);
 
   const redeem = (reward) => {
     Alert.alert(
@@ -26,9 +60,32 @@ const RewardsScreen = ({ navigation }) => {
         { 
           text: 'Redeem', 
           onPress: async () => {
-            await addRedemption({ id: Date.now().toString(), rewardName: reward.title, pointsSpent: reward.points, date: new Date().toISOString() });
-            logActivity(`Redeemed ${reward.title}`);
-            Alert.alert('Success', 'Reward redeemed successfully!');
+            try {
+              await addDoc(collection(db, "redemptions"), {
+                societyCode: user.societyCode,
+                rewardName: reward.title,
+                pointsSpent: reward.points,
+                redeemedBy: user.uid,
+                date: serverTimestamp()
+              });
+              
+              await updateDoc(doc(db, "societies", user.societyCode), {
+                totalPointsEarned: increment(-reward.points)
+              });
+              
+              await addDoc(collection(db, "announcements"), {
+                societyCode: user.societyCode,
+                type: 'activity',
+                title: 'Reward Redeemed',
+                description: `Redeemed ${reward.title} for ${reward.points} points`,
+                timestamp: Date.now()
+              });
+
+              Alert.alert('Success', 'Reward redeemed successfully!');
+            } catch (e) {
+              console.error(e);
+              Alert.alert('Error', 'Could not redeem reward. Check your connection.');
+            }
           }
         }
       ]
@@ -50,7 +107,11 @@ const RewardsScreen = ({ navigation }) => {
           <Text style={styles.balanceLabel}>Current Balance</Text>
           <View style={styles.pointsRow}>
             <MaterialCommunityIcons name="star-circle" size={36} color="#FFD700" />
-            <Text style={styles.balanceValue}>{points} pts</Text>
+            {isLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 10 }} />
+            ) : (
+              <Text style={styles.balanceValue}>{points} pts</Text>
+            )}
           </View>
         </View>
 
@@ -81,14 +142,16 @@ const RewardsScreen = ({ navigation }) => {
         })}
 
         <Text style={styles.sectionTitle}>Redemption History</Text>
-        {redemptions.length === 0 ? (
+        {isLoading ? (
+          <ActivityIndicator size="large" color={colors.primary} />
+        ) : redemptions.length === 0 ? (
           <Text style={{ textAlign: 'center', color: colors.textSecondary, marginBottom: 20 }}>No redemptions yet.</Text>
         ) : (
           redemptions.map(r => (
             <Card key={r.id} style={styles.historyCard}>
               <Text style={styles.historyTitle}>{r.rewardName}</Text>
               <View style={styles.historyDetails}>
-                <Text style={styles.historyDate}>{new Date(r.date).toLocaleDateString()}</Text>
+                <Text style={styles.historyDate}>{r.date?.toDate ? r.date.toDate().toLocaleDateString() : 'Just now'}</Text>
                 <Text style={styles.historyPoints}>-{r.pointsSpent} pts</Text>
               </View>
             </Card>

@@ -1,14 +1,14 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Dimensions, TextInput, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { AppContext } from '../context/AppContext';
 
 const { width } = Dimensions.get('window');
-import * as storage from '../services/storageService';
 
 const TIPS = [
   { id: '1', text: 'Carry a reusable bag 🛍️' },
@@ -27,25 +27,23 @@ const POSTS = [
 ];
 
 const CommunityScreen = () => {
-  const { challengeJoined, toggleChallenge, logActivity, user } = useContext(AppContext);
+  const { challengeJoined, toggleChallenge, user } = useContext(AppContext);
   const [announcement, setAnnouncement] = useState('');
-  const [localPosts, setLocalPosts] = useState(POSTS);
+  const [localPosts, setLocalPosts] = useState([]);
   
   const [lbItems, setLbItems] = useState([]);
   const [isComputingLB, setIsComputingLB] = useState(true);
 
-  const computeLeaderboard = async () => {
-    setIsComputingLB(true);
-    try {
-      const storedSocieties = await storage.getSocieties() || [];
-      const storedUsers = await storage.getAllUsers() || [];
-      const storedSubmissions = await storage.getAllSubmissions() || [];
+  useEffect(() => {
+    if (!user) return;
 
+    // Listen to all societies for leaderboard
+    const unsubSocieties = onSnapshot(collection(db, "societies"), (snapshot) => {
+      const storedSocieties = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+      
       const computed = storedSocieties.map(soc => {
-        const membersCount = storedUsers.filter(u => u.societyCode === soc.societyCode && u.role === 'member').length;
-        
-        const socSubs = storedSubmissions.filter(s => s.societyCode === soc.societyCode);
-        const totalPointsEarned = socSubs.reduce((acc, sub) => acc + (sub.points || 0), 0);
+        const membersCount = soc.memberCount || 1;
+        const totalPointsEarned = soc.totalPointsEarned || 0;
 
         const regDate = soc.registrationDate || (Date.now() - 30 * 24 * 60 * 60 * 1000);
         const daysSinceRegistration = Math.max(0, (Date.now() - regDate) / (1000 * 60 * 60 * 24));
@@ -75,43 +73,55 @@ const CommunityScreen = () => {
       const evaluating = computed.filter(s => s.isEvaluating).sort((a, b) => (a.registrationDate || 0) - (b.registrationDate || 0));
 
       const finalRanked = ranked.map((r, i) => ({ ...r, rank: i + 1 }));
-
       setLbItems([...finalRanked, ...evaluating]);
-    } catch (e) {
-      console.error(e);
-    } finally {
       setIsComputingLB(false);
-    }
-  };
+    });
 
-  useFocusEffect(
-    React.useCallback(() => {
-      computeLeaderboard();
-    }, [])
-  );
+    // Listen to announcements for posts
+    const q = query(
+      collection(db, "announcements"), 
+      where("societyCode", "==", user.societyCode), 
+      orderBy("timestamp", "desc")
+    );
+    
+    const unsubPosts = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setLocalPosts(data);
+    });
+
+    return () => {
+      unsubSocieties();
+      unsubPosts();
+    };
+  }, [user]);
 
   const handleJoin = async () => {
     await toggleChallenge();
     if (!challengeJoined) logActivity('Joined the Weekly Challenge!');
   };
 
-  const postAnnouncement = () => {
+  const postAnnouncement = async () => {
     if (announcement.trim()) {
-      const newPost = { 
-        id: Date.now().toString(), 
-        user: user.name + ' (Admin)', 
-        time: 'Just now', 
-        content: announcement, 
-        societyCode: user.societyCode, 
-        isAdminAuthored: true 
-      };
-      setLocalPosts([newPost, ...localPosts]);
-      setAnnouncement('');
+      try {
+        await addDoc(collection(db, "announcements"), {
+          societyCode: user.societyCode,
+          type: 'announcement',
+          title: 'Admin Post',
+          description: announcement,
+          user: user.name + ' (Admin)',
+          timestamp: Date.now(),
+          postedBy: user.uid,
+          isAdminAuthored: true,
+          createdAt: serverTimestamp()    
+        });
+        setAnnouncement('');
+      } catch (error) {
+        console.error("Error posting announcement:", error);
+      }
     }
   };
 
-  const visiblePosts = localPosts.filter(p => !p.societyCode || p.societyCode === user?.societyCode);
-  
+  const visiblePosts = localPosts;
 
 
   return (
@@ -250,15 +260,15 @@ const CommunityScreen = () => {
           <Card key={post.id} style={styles.postCard}>
             <View style={styles.postHeader}>
               <View style={styles.postAvatar}>
-                <Text style={styles.avatarText}>{post.user.charAt(0)}</Text>
+                <Text style={styles.avatarText}>{(post.user?post.user:post.title).charAt(0)}</Text>
               </View>
               <View>
-                <Text style={styles.postUser}>{post.user}</Text>
+                <Text style={styles.postUser}>{post.user || post.title}</Text>
                 {post.isAdminAuthored && <Text style={{color: colors.primary, fontSize: 12, fontWeight: 'bold'}}>📢 Admin Announcement</Text>}
-                <Text style={styles.postTime}>{post.time}</Text>
+                <Text style={styles.postTime}>{post.time || (post.timestamp ? new Date(post.timestamp).toLocaleString() : 'Just now')}</Text>
               </View>
             </View>
-            <Text style={styles.postContent}>{post.content}</Text>
+            <Text style={styles.postContent}>{post.content || post.description}</Text>
             <View style={styles.postActions}>
               <TouchableOpacity style={styles.actionBtn}>
                 <MaterialCommunityIcons name="heart-outline" size={20} color={colors.textSecondary} />

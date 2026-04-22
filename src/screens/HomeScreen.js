@@ -1,7 +1,7 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import * as storage from '../services/storageService';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { collection, query, where, onSnapshot, doc, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppContext } from '../context/AppContext';
@@ -9,62 +9,64 @@ import { colors } from '../theme/colors';
 import Card from '../components/Card';
 
 const HomeScreen = ({ navigation }) => {
-  const { user, points, footprint, itemsLogged, pickupsScheduled, co2Saved, personalActivity, allUsers, footprintEntries, logout } = useContext(AppContext);
+  const { user, logout } = useContext(AppContext);
   const [adminRankData, setAdminRankData] = useState(null);
   const [hasActivePoll, setHasActivePoll] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      checkActivePolls();
-      if (user?.role === 'admin') {
-        computeAdminRank();
+  // Data states
+  const [points, setPoints] = useState(0);
+  const [memberCount, setMemberCount] = useState(0);
+  const [societyOverviewFootprint, setSocietyOverviewFootprint] = useState(0);
+  const [footprint, setFootprint] = useState(0);
+  const [itemsLogged, setItemsLogged] = useState(0);
+  const [pickupsScheduled, setPickupsScheduled] = useState(0);
+  const [co2Saved, setCo2Saved] = useState(0);
+  const [personalActivity, setPersonalActivity] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    // 1. Active Polls
+    const qPolls = query(collection(db, "polls"), where("societyCode", "==", user.societyCode));
+    const unsubPolls = onSnapshot(qPolls, (snapshot) => {
+      const polls = snapshot.docs.map(d => d.data());
+      const activePolls = polls.filter(p => p.status === 'active' && Date.now() <= p.endsAt);
+      if (user?.role === 'member') {
+        const hasUnvoted = activePolls.some(p => !(p.votes && Object.keys(p.votes).includes(user.uid)));
+        setHasActivePoll(hasUnvoted);
+      } else {
+        setHasActivePoll(activePolls.length > 0);
       }
-    }, [user])
-  );
+    });
 
-  const checkActivePolls = async () => {
-    try {
-       const polls = await storage.getCommunityPolls() || [];
-       const societyPolls = polls.filter(p => p.societyCode === user.societyCode && p.status === 'active' && Date.now() <= p.endsAt);
-       if (user?.role === 'member') {
-          // Check if un-voted active polls exist
-          const hasUnvoted = societyPolls.some(p => !Object.keys(p.votes).includes(user.id));
-          setHasActivePoll(hasUnvoted);
-       } else {
-          setHasActivePoll(societyPolls.length > 0);
-       }
-    } catch(e) {}
-  };
+    // 2. Society Doc (Points, Member Count)
+    const unsubSociety = onSnapshot(doc(db, "societies", user.societyCode), (d) => {
+      if (d.exists()) {
+        const data = d.data();
+        setPoints(data.totalPointsEarned || 0);
+        setMemberCount(data.memberCount || 1);
+      }
+    });
 
-  const computeAdminRank = async () => {
-    try {
-      const storedSocieties = await storage.getSocieties() || [];
-      const storedUsers = await storage.getAllUsers() || [];
-      const storedSubmissions = await storage.getAllSubmissions() || [];
-
-      const computed = storedSocieties.map(soc => {
-        const membersCount = storedUsers.filter(u => u.societyCode === soc.societyCode && u.role === 'member').length;
-        const socSubs = storedSubmissions.filter(s => s.societyCode === soc.societyCode);
-        const totalPointsEarned = socSubs.reduce((acc, sub) => acc + (sub.points || 0), 0);
+    // 3. Society Footprint & Admin Rank
+    const unsubAllSocieties = onSnapshot(collection(db, "societies"), (snapshot) => {
+      const computed = snapshot.docs.map(currDoc => {
+        const soc = {id: currDoc.id, ...currDoc.data()};
+        const mCount = soc.memberCount || 1;
+        const totalPointsEarned = soc.totalPointsEarned || 0;
         const regDate = soc.registrationDate || (Date.now() - 30 * 24 * 60 * 60 * 1000);
         const daysSinceRegistration = Math.max(0, (Date.now() - regDate) / (1000 * 60 * 60 * 24));
         const weeksActive = Math.floor(daysSinceRegistration / 7);
         const isEvaluating = weeksActive < 2;
-        const safeMembers = Math.max(membersCount, 1);
-        const normalizedScore = isEvaluating ? 0 : (totalPointsEarned / (weeksActive * safeMembers));
+        const normalizedScore = isEvaluating ? 0 : (totalPointsEarned / (weeksActive * Math.max(mCount, 1)));
         let grade = 'C';
         if (normalizedScore >= 10.0) grade = 'A';
         else if (normalizedScore >= 4.0) grade = 'B';
-        return {
-          ...soc,
-          normalizedScore,
-          isEvaluating,
-          grade
-        };
+        return { ...soc, normalizedScore, isEvaluating, grade };
       });
-
       const ranked = computed.filter(s => !s.isEvaluating).sort((a, b) => b.normalizedScore - a.normalizedScore);
-      
       const myRow = ranked.findIndex(r => r.societyCode === user.societyCode);
       if (myRow !== -1) {
         setAdminRankData({ ...ranked[myRow], rank: myRow + 1 });
@@ -72,14 +74,52 @@ const HomeScreen = ({ navigation }) => {
         const myEval = computed.find(s => s.societyCode === user.societyCode);
         setAdminRankData(myEval || { isEvaluating: true });
       }
-    } catch(e) {}
-  };
+    });
 
-  const societyOverviewFootprint = footprintEntries
-    .filter(f => f.societyCode === user?.societyCode)
-    .reduce((acc, f) => acc + (f.totalKg || 0), 0);
+    // 4. All Society Users (for admin to manage members)
+    const unsubUsers = onSnapshot(query(collection(db, "users"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      setAllUsers(snapshot.docs.map(d => d.data()));
+    });
 
-  const memberCount = allUsers.filter(u => u.societyCode === user?.societyCode).length;
+    // 5. Footprint Entries
+    const unsubFootprints = onSnapshot(query(collection(db, "footprint_entries"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      const entries = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      const totalSocietyKg = entries.reduce((acc, f) => acc + (f.totalKg || 0), 0);
+      setSocietyOverviewFootprint(totalSocietyKg);
+      setCo2Saved((totalSocietyKg * 1.5).toFixed(1)); // mock math 1.5kg CO2 per 1kg plastic avoided
+      
+      const myEntries = entries.filter(e => e.userId === user.uid);
+      const myTotalKg = myEntries.reduce((acc, e) => acc + (e.totalKg || 0), 0);
+      setFootprint(myTotalKg);
+      setItemsLogged(myEntries.length);
+      
+      const formattedActivities = myEntries.sort((a,b) => b.date - a.date).map(e => ({
+        id: e.id,
+        title: `Logged ${e.items?.length || 0} items (${e.totalKg || 0} kg)`,
+        date: e.date
+      }));
+      setPersonalActivity(formattedActivities);
+    });
+
+    // 6. Pickups
+    const unsubPickups = onSnapshot(query(collection(db, "pickups"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      const entries = snapshot.docs.map(d => d.data());
+      const pending = entries.filter(e => e.status !== 'Completed' && e.status !== 'Cancelled').length;
+      setPickupsScheduled(pending);
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubPolls();
+      unsubSociety();
+      unsubAllSocieties();
+      unsubUsers();
+      unsubFootprints();
+      unsubPickups();
+    };
+  }, [user]);
+
+
 
   const getFootprintColor = (val) => {
     if (val < 0.2) return colors.ratingExcellent;

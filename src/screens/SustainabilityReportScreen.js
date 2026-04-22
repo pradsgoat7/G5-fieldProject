@@ -1,11 +1,11 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
-import * as storage from '../services/storageService';
 
 const SustainabilityReportScreen = () => {
   const { user } = useContext(AppContext);
@@ -16,69 +16,69 @@ const SustainabilityReportScreen = () => {
     pickupsCompleted: 0
   });
   const [gradeInfo, setGradeInfo] = useState({ grade: '', label: '', hasData: false, tip: '' });
+  const [isLoading, setIsLoading] = useState(true);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      if (user) loadReportData();
-    }, [user])
-  );
+  useEffect(() => {
+    if (!user) return;
 
-  const loadReportData = async () => {
-    try {
-      const allFootprints = await storage.getAllFootprintEntries() || [];
-      const userFootprints = allFootprints.filter(f => f.userId === user.id);
+    const unsubFootprints = onSnapshot(query(collection(db, "footprint_entries"), where("userId", "==", user.uid)), (snapshot) => {
+      const userFootprints = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
       
-      const allSubmissions = await storage.getAllSubmissions() || [];
-      const societySubmissions = allSubmissions.filter(s => s.societyCode === user.societyCode);
-      
-      const allPickups = await storage.getAllPickups() || [];
-      const completedPickups = allPickups.filter(p => p.societyCode === user.societyCode && p.status === 'Completed');
-
       const totalPlasticLogged = userFootprints.reduce((acc, curr) => acc + (curr.totalKg || 0), 0);
-      const totalKgRecycled = societySubmissions.reduce((acc, curr) => acc + (curr.kg || 0), 0);
-      const pointsEarned = societySubmissions.reduce((acc, curr) => acc + (curr.points || 0), 0);
-      
-      setStats({
-        totalPlasticLogged,
-        totalKgRecycled,
-        pointsEarned,
-        pickupsCompleted: completedPickups.length
-      });
 
       if (userFootprints.length === 0) {
         setGradeInfo({ grade: '', label: 'Not Enough Data Yet', hasData: false, tip: '' });
-        return;
-      }
+      } else {
+        const MS_IN_WEEK = 604800000;
+        const sortedDates = userFootprints.map(f => new Date(f.date).getTime() || f.date?.toMillis?.() || Date.now()).sort();
+        const firstEntry = sortedDates[0];
+        const timeSpan = Date.now() - firstEntry;
+        const weeksActive = Math.max(1, Math.ceil(timeSpan / MS_IN_WEEK));
+        
+        const averageWeekly = totalPlasticLogged / weeksActive;
 
-      // calculate ISO week span
-      const MS_IN_WEEK = 604800000;
-      const sortedDates = userFootprints.map(f => new Date(f.date).getTime()).sort();
-      const firstEntry = sortedDates[0];
-      const timeSpan = Date.now() - firstEntry;
-      const weeksActive = Math.max(1, Math.ceil(timeSpan / MS_IN_WEEK));
+        let grade = 'C';
+        let label = 'Needs Improvement';
+        let gradeIcon = '🔴';
+        let tip = "Start small — avoid single-use bottles for 7 days.";
+
+        if (averageWeekly < 0.3) {
+          grade = 'A';
+          label = 'Eco Champion';
+          gradeIcon = '🟢';
+          tip = "You're doing amazing! Encourage your neighbors to join.";
+        } else if (averageWeekly <= 0.7) {
+          grade = 'B';
+          label = 'On the Right Track';
+          gradeIcon = '🟡';
+          tip = "Try replacing plastic bags with cloth bags this week.";
+        }
+        setGradeInfo({ grade, label, hasData: true, gradeIcon, tip, averageWeekly });
+      }
       
-      const averageWeekly = totalPlasticLogged / weeksActive;
+      setStats(prev => ({...prev, totalPlasticLogged}));
+    });
 
-      let grade = 'C';
-      let label = 'Needs Improvement';
-      let gradeIcon = '🔴';
-      let tip = "Start small — avoid single-use bottles for 7 days.";
+    const unsubSubmissions = onSnapshot(query(collection(db, "exchange_submissions"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      const societySubmissions = snapshot.docs.map(d => d.data());
+      const totalKgRecycled = societySubmissions.reduce((acc, curr) => acc + (curr.kg || 0), 0);
+      const pointsEarned = societySubmissions.reduce((acc, curr) => acc + (curr.pointsEarned || 0), 0);
+      setStats(prev => ({...prev, totalKgRecycled, pointsEarned}));
+    });
 
-      if (averageWeekly < 0.3) {
-        grade = 'A';
-        label = 'Eco Champion';
-        gradeIcon = '🟢';
-        tip = "You're doing amazing! Encourage your neighbors to join.";
-      } else if (averageWeekly <= 0.7) {
-        grade = 'B';
-        label = 'On the Right Track';
-        gradeIcon = '🟡';
-        tip = "Try replacing plastic bags with cloth bags this week.";
-      }
+    const unsubPickups = onSnapshot(query(collection(db, "pickups"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      const allPickups = snapshot.docs.map(d => d.data());
+      const completedPickups = allPickups.filter(p => p.status === 'Completed');
+      setStats(prev => ({...prev, pickupsCompleted: completedPickups.length}));
+      setIsLoading(false);
+    });
 
-      setGradeInfo({ grade, label, hasData: true, gradeIcon, tip, averageWeekly });
-    } catch(e) {}
-  };
+    return () => {
+      unsubFootprints();
+      unsubSubmissions();
+      unsubPickups();
+    };
+  }, [user]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -96,6 +96,8 @@ const SustainabilityReportScreen = () => {
              <Text style={styles.periodText}>Report period: All time</Text>
           </View>
         </View>
+
+        {isLoading && <ActivityIndicator size="large" color={colors.primary} style={{marginBottom: 15}} />}
 
         <Text style={styles.sectionTitle}>Overview Stats</Text>
         <View style={styles.statsGrid}>

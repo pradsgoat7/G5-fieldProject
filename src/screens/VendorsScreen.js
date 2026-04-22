@@ -1,6 +1,8 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, Alert, TouchableOpacity } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, increment, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
@@ -16,12 +18,32 @@ const PLASTIC_TYPES = ['PET Bottles', 'HDPE Constants', 'Plastic Bags', 'Mixed']
 const TIME_SLOTS = ['Morning (8am-12pm)', 'Afternoon (12pm-4pm)', 'Evening (4pm-7pm)'];
 
 const VendorsScreen = () => {
-  const { user, societyPickups, addPickup, logActivity, updatePickupStatus } = useContext(AppContext);
+  const { user } = useContext(AppContext);
   const [vendor, setVendor] = useState(VENDORS[0].name);
   const [types, setTypes] = useState(['PET Bottles']);
   const [kg, setKg] = useState('');
   const [timeSlot, setTimeSlot] = useState(TIME_SLOTS[0]);
   const [instructions, setInstructions] = useState('');
+  const [societyPickups, setSocietyPickups] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, "pickups"),
+      where("societyCode", "==", user.societyCode),
+      orderBy("date", "desc")
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setSocietyPickups(data);
+      setIsLoading(false);
+    }, (error) => {
+      console.log("Error fetching pickups", error);
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   const toggleType = (t) => {
     if (types.includes(t)) {
@@ -37,26 +59,45 @@ const VendorsScreen = () => {
       return;
     }
 
-    Alert.alert(
-      'Pickup Scheduled!',
-      "You'll earn bonus points on completion.",
-      [{ text: 'OK' }]
-    );
+    try {
+      await addDoc(collection(db, "pickups"), {
+        societyCode: user.societyCode,
+        vendorName: vendor,
+        vendor: vendor, // keeping vendor property for UI compatibility
+        plasticTypes: types,
+        type: types.join(', '), // compatibility
+        estimatedKg: parseFloat(kg),
+        kg: parseFloat(kg), // compatibility
+        date: new Date().toISOString().split('T')[0], // compatibility
+        pickupDate: serverTimestamp(),
+        timeSlot: timeSlot,
+        address: user.societyName,
+        instructions: instructions,
+        status: 'Scheduled',
+        scheduledBy: user.uid,
+        createdAt: serverTimestamp()
+      });
 
-    const newPickup = {
-      id: Date.now().toString(),
-      vendor: vendor,
-      date: new Date().toISOString().split('T')[0],
-      type: types.join(', '),
-      kg: parseFloat(kg),
-      status: 'Scheduled'
-    };
+      await addDoc(collection(db, "announcements"), {
+        societyCode: user.societyCode,
+        type: 'activity',
+        title: 'Pickup Scheduled',
+        description: `Scheduled pickup with ${vendor}`,
+        timestamp: Date.now()
+      });
 
-    await addPickup(newPickup);
-    logActivity(`Scheduled pickup with ${vendor}`);
+      Alert.alert(
+        'Pickup Scheduled!',
+        "You'll earn bonus points on completion.",
+        [{ text: 'OK' }]
+      );
 
-    setKg('');
-    setInstructions('');
+      setKg('');
+      setInstructions('');
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'Could not schedule pickup. Check your connection.');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -145,7 +186,9 @@ const VendorsScreen = () => {
         </Card>
 
         <Text style={styles.sectionTitle}>My Scheduled Pickups</Text>
-        {societyPickups.length === 0 ? (
+        {isLoading ? (
+          <ActivityIndicator size="large" color={colors.primary} />
+        ) : societyPickups.length === 0 ? (
           <Text style={styles.emptyText}>No pickups yet. Schedule your first one!</Text>
         ) : (
           societyPickups.map(p => (
@@ -162,13 +205,38 @@ const VendorsScreen = () => {
               {p.status === 'Scheduled' && (
                 <View style={{ flexDirection: 'row', marginTop: 15 }}>
                   <Button title="Mark Complete" type="primary" onPress={async () => {
-                     await updatePickupStatus(p.id, 'Completed');
-                     Alert.alert('Pickup completed!', '+50 bonus points added to your society.');
-                     logActivity(`Completed pickup with ${p.vendor}`);
+                     try {
+                       await updateDoc(doc(db, "pickups", p.id), { status: 'Completed' });
+                       
+                       await updateDoc(doc(db, "societies", user.societyCode), {
+                         totalPointsEarned: increment(50)
+                       });
+                       await addDoc(collection(db, "exchange_submissions"), {
+                          societyCode: user.societyCode,
+                          plasticType: 'Pickup Bonus',
+                          kg: 0,
+                          pointsEarned: 50,
+                          submittedBy: 'system',
+                          date: serverTimestamp()
+                       });
+                       await addDoc(collection(db, "announcements"), {
+                         societyCode: user.societyCode,
+                         type: 'activity',
+                         title: 'Pickup Completed',
+                         description: `Completed pickup with ${p.vendor}`,
+                         timestamp: Date.now()
+                       });
+                       Alert.alert('Pickup completed!', '+50 bonus points added to your society.');
+                     } catch (e) {
+                       Alert.alert('Error', 'Could not update pickup.');
+                     }
                   }} style={{ flex: 1, marginRight: 5, paddingVertical: 8 }} />
                   <Button title="Cancel" type="secondary" onPress={async () => {
-                     await updatePickupStatus(p.id, 'Cancelled');
-                     logActivity(`Cancelled pickup with ${p.vendor}`);
+                     try {
+                        await updateDoc(doc(db, "pickups", p.id), { status: 'Cancelled' });
+                     } catch (e) {
+                        Alert.alert('Error', 'Could not cancel pickup.');
+                     }
                   }} style={{ flex: 1, marginLeft: 5, paddingVertical: 8 }} />
                 </View>
               )}

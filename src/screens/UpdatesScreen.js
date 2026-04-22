@@ -1,66 +1,66 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert, TextInput } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert, TextInput, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
-import * as storage from '../services/storageService';
 
 const UpdatesScreen = () => {
   const { user } = useContext(AppContext);
   const [updates, setUpdates] = useState([]);
-  
-  // Admin form
-  const [isCreating, setIsCreating] = useState(false);
-  const [newType, setNewType] = useState('announcement');
-  const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadUpdates();
-    }, [user])
-  );
-
-  const loadUpdates = async () => {
-    try {
-      const allUpdates = await storage.getCommunityUpdates() || [];
-      const societyUpdates = allUpdates.filter(u => u.societyCode === user.societyCode);
-      setUpdates(societyUpdates.sort((a,b) => b.timestamp - a.timestamp));
-    } catch(e) {}
-  };
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "announcements"), where("societyCode", "==", user.societyCode), orderBy("timestamp", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      setUpdates(data);
+      setIsLoading(false);
+    }, (error) => {
+      console.log("Error fetching announcements", error);
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   const handlePost = async () => {
     if (!newTitle.trim() || !newDesc.trim()) {
       return Alert.alert('Error', 'Please fill out both title and description.');
     }
-    const newItem = {
-      id: Date.now().toString(),
-      societyCode: user.societyCode,
-      type: newType,
-      title: newTitle,
-      description: newDesc,
-      timestamp: Date.now()
-    };
-    const allUpdates = await storage.getCommunityUpdates() || [];
-    await storage.saveCommunityUpdates([...allUpdates, newItem]);
-    Alert.alert('Success', 'Update posted!');
-    setNewTitle('');
-    setNewDesc('');
-    setIsCreating(false);
-    loadUpdates();
+    try {
+      await addDoc(collection(db, "announcements"), {
+        societyCode: user.societyCode,
+        type: newType,
+        title: newTitle,
+        description: newDesc,
+        timestamp: Date.now(),
+        postedBy: user.uid,
+        createdAt: serverTimestamp()    
+      });
+      Alert.alert('Success', 'Update posted!');
+      setNewTitle('');
+      setNewDesc('');
+      setIsCreating(false);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'Could not post update.');
+    }
   };
 
   const handleDelete = async (id) => {
     Alert.alert('Delete', 'Are you sure you want to delete this update?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
-          const allUpdates = await storage.getCommunityUpdates() || [];
-          const filtered = allUpdates.filter(u => u.id !== id);
-          await storage.saveCommunityUpdates(filtered);
-          loadUpdates();
+          try {
+            await deleteDoc(doc(db, "announcements", id));
+          } catch (e) {
+            console.error(e);
+            Alert.alert('Error', 'Could not delete update.');
+          }
       }}
     ]);
   };
@@ -132,7 +132,9 @@ const UpdatesScreen = () => {
 
         <Text style={styles.sectionTitle}>Latest Updates</Text>
         
-        {updates.length === 0 ? (
+        {isLoading ? (
+          <ActivityIndicator size="large" color={colors.primary} />
+        ) : updates.length === 0 ? (
           <Text style={styles.emptyText}>No recent updates from your society admin.</Text>
         ) : (
           updates.map(item => {
@@ -145,7 +147,7 @@ const UpdatesScreen = () => {
                    </View>
                    <View style={{ flex: 1, marginLeft: 15 }}>
                       <Text style={styles.updateTitle}>{item.title}</Text>
-                      <Text style={styles.updateDate}>{new Date(item.timestamp).toLocaleString()}</Text>
+                      <Text style={styles.updateDate}>{item.timestamp ? new Date(item.timestamp).toLocaleString() : 'Just now'}</Text>
                    </View>
                    {user?.role === 'admin' && (
                       <TouchableOpacity onPress={() => handleDelete(item.id)} style={{padding: 5}}>

@@ -1,11 +1,11 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
-import * as storage from '../services/storageService';
 
 const MemberActivityScreen = () => {
   const { user } = useContext(AppContext);
@@ -26,86 +26,95 @@ const MemberActivityScreen = () => {
     return { year: d.getFullYear(), week: weekNum };
   };
 
-  useFocusEffect(
-    React.useCallback(() => {
-      if (user?.role === 'admin') loadMemberData();
-    }, [user])
-  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [societyUsers, setSocietyUsers] = useState([]);
+  const [societyFootprints, setSocietyFootprints] = useState([]);
 
-  const loadMemberData = async () => {
-    try {
-      const allUsers = await storage.getAllUsers() || [];
-      const societyMembers = allUsers.filter(u => u.societyCode === user.societyCode && u.role === 'member');
-      const allFootprints = await storage.getAllFootprintEntries() || [];
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
 
-      const currentWeekInfo = getISOWeekInfo(Date.now());
-      let activeThisWeek = 0;
+    const unsubUsers = onSnapshot(query(collection(db, "users"), where("societyCode", "==", user.societyCode), where("role", "==", "member")), (snapshot) => {
+      setSocietyUsers(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+    });
 
-      const processedMembers = societyMembers.map(member => {
-        const memberEntries = allFootprints.filter(f => f.userId === member.id).sort((a,b) => new Date(b.date) - new Date(a.date));
-        
-        let status = 'never';
-        let badgeColor = '#9E9E9E';
-        let badgeLabel = 'No entries yet';
-        let lastDate = null;
-        let latestTotal = null;
-        let latestRating = null;
+    const unsubFootprints = onSnapshot(query(collection(db, "footprint_entries"), where("societyCode", "==", user.societyCode)), (snapshot) => {
+      setSocietyFootprints(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+    });
 
-        if (memberEntries.length > 0) {
-          const latestEntry = memberEntries[0];
-          lastDate = new Date(latestEntry.date);
-          latestTotal = latestEntry.totalKg;
-          latestRating = latestEntry.rating;
+    return () => {
+      unsubUsers();
+      unsubFootprints();
+    };
+  }, [user]);
 
-          const entryWeekInfo = getISOWeekInfo(lastDate);
-          if (entryWeekInfo.year === currentWeekInfo.year && entryWeekInfo.week === currentWeekInfo.week) {
-             status = 'active_this';
-             badgeColor = colors.success;
-             badgeLabel = 'Active this week ✅';
-             activeThisWeek++;
-          } else if (
-             (entryWeekInfo.year === currentWeekInfo.year && entryWeekInfo.week === currentWeekInfo.week - 1) ||
-             (entryWeekInfo.year === currentWeekInfo.year - 1 && currentWeekInfo.week === 1 && entryWeekInfo.week > 50)
-          ) {
-             status = 'active_last';
-             badgeColor = colors.ratingGood;
-             badgeLabel = 'Active last week';
-          } else {
-             status = 'inactive';
-             badgeColor = colors.error;
-             badgeLabel = 'Inactive ⚠️';
-          }
-        }
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    setIsLoading(true);
 
-        return {
-          ...member,
-          entriesCount: memberEntries.length,
-          lastDate,
-          latestTotal,
-          latestRating,
-          status,
-          badgeColor,
-          badgeLabel
-        };
-      });
+    const currentWeekInfo = getISOWeekInfo(Date.now());
+    let activeThisWeek = 0;
 
-      // Sort order: Inactive (red), Active Last (yellow), Active This (green), Never logged.
-      // Wait, prompt: "Inactive members (red) at the top... Then last-week members (yellow)... Then active this week (green)... Never logged always at the very top above inactive"
-      const statusOrder = {
-        'never': 1,
-        'inactive': 2,
-        'active_last': 3,
-        'active_this': 4
-      };
-
-      processedMembers.sort((a,b) => statusOrder[a.status] - statusOrder[b.status]);
+    const processedMembers = societyUsers.map(member => {
+      const memberEntries = societyFootprints.filter(f => f.userId === member.uid).sort((a,b) => b.date - a.date);
       
-      setMembersList(processedMembers);
-      setActiveCount(activeThisWeek);
-    } catch(e) {
-      console.log(e);
-    }
-  };
+      let status = 'never';
+      let badgeColor = '#9E9E9E';
+      let badgeLabel = 'No entries yet';
+      let lastDate = null;
+      let latestTotal = null;
+      let latestRating = null;
+
+      if (memberEntries.length > 0) {
+        const latestEntry = memberEntries[0];
+        lastDate = new Date(latestEntry.date);
+        latestTotal = latestEntry.totalKg;
+        latestRating = latestEntry.rating;
+
+        const entryWeekInfo = getISOWeekInfo(lastDate);
+        if (entryWeekInfo.year === currentWeekInfo.year && entryWeekInfo.week === currentWeekInfo.week) {
+           status = 'active_this';
+           badgeColor = colors.success;
+           badgeLabel = 'Active this week ✅';
+           activeThisWeek++;
+        } else if (
+           (entryWeekInfo.year === currentWeekInfo.year && entryWeekInfo.week === currentWeekInfo.week - 1) ||
+           (entryWeekInfo.year === currentWeekInfo.year - 1 && currentWeekInfo.week === 1 && entryWeekInfo.week > 50)
+        ) {
+           status = 'active_last';
+           badgeColor = colors.ratingGood;
+           badgeLabel = 'Active last week';
+        } else {
+           status = 'inactive';
+           badgeColor = colors.error;
+           badgeLabel = 'Inactive ⚠️';
+        }
+      }
+
+      return {
+        ...member,
+        entriesCount: memberEntries.length,
+        lastDate,
+        latestTotal,
+        latestRating,
+        status,
+        badgeColor,
+        badgeLabel
+      };
+    });
+
+    const statusOrder = {
+      'never': 1,
+      'inactive': 2,
+      'active_last': 3,
+      'active_this': 4
+    };
+
+    processedMembers.sort((a,b) => statusOrder[a.status] - statusOrder[b.status]);
+    
+    setMembersList(processedMembers);
+    setActiveCount(activeThisWeek);
+    setIsLoading(false);
+  }, [societyUsers, societyFootprints, user]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -123,42 +132,44 @@ const MemberActivityScreen = () => {
           </View>
         </View>
 
-        {membersList.map(member => (
-          <Card key={member.id} style={[styles.memberCard, { borderLeftWidth: 4, borderLeftColor: member.badgeColor }]}>
-            <View style={styles.memberHeader}>
-              <Text style={styles.memberName}>{member.name}</Text>
-              <Text style={styles.memberEmail}>{member.email}</Text>
-            </View>
-
-            <View style={styles.statusRow}>
-               <View style={[styles.badge, { backgroundColor: member.badgeColor }]}>
-                 <Text style={styles.badgeText}>{member.badgeLabel}</Text>
-               </View>
-               {member.lastDate && (
-                 <Text style={styles.dateText}>Last logged: {member.lastDate.toLocaleDateString()}</Text>
-               )}
-            </View>
-
-            <View style={styles.statsDivider} />
-            
-            <View style={styles.statsRow}>
-               <View style={styles.statBox}>
-                 <Text style={styles.statLabel}>Total Entries</Text>
-                 <Text style={styles.statVal}>{member.entriesCount}</Text>
-               </View>
-               {member.latestTotal !== null && (
-                 <View style={styles.statBox}>
-                   <Text style={styles.statLabel}>Latest Footprint</Text>
-                   <Text style={styles.statVal}>{member.latestTotal.toFixed(2)} kg</Text>
-                   <Text style={[styles.statSub, { color: colors.primary }]}>{member.latestRating}</Text>
-                 </View>
-               )}
-            </View>
-          </Card>
-        ))}
-
-        {membersList.length === 0 && (
+        {isLoading ? (
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+        ) : membersList.length === 0 ? (
           <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No members joined yet.</Text>
+        ) : (
+          membersList.map(member => (
+            <Card key={member.uid} style={[styles.memberCard, { borderLeftWidth: 4, borderLeftColor: member.badgeColor }]}>
+              <View style={styles.memberHeader}>
+                <Text style={styles.memberName}>{member.name}</Text>
+                <Text style={styles.memberEmail}>{member.email}</Text>
+              </View>
+
+              <View style={styles.statusRow}>
+                 <View style={[styles.badge, { backgroundColor: member.badgeColor }]}>
+                   <Text style={styles.badgeText}>{member.badgeLabel}</Text>
+                 </View>
+                 {member.lastDate && (
+                   <Text style={styles.dateText}>Last logged: {member.lastDate.toLocaleDateString()}</Text>
+                 )}
+              </View>
+
+              <View style={styles.statsDivider} />
+              
+              <View style={styles.statsRow}>
+                 <View style={styles.statBox}>
+                   <Text style={styles.statLabel}>Total Entries</Text>
+                   <Text style={styles.statVal}>{member.entriesCount}</Text>
+                 </View>
+                 {member.latestTotal !== null && (
+                   <View style={styles.statBox}>
+                     <Text style={styles.statLabel}>Latest Footprint</Text>
+                     <Text style={styles.statVal}>{member.latestTotal.toFixed(2)} kg</Text>
+                     <Text style={[styles.statSub, { color: colors.primary }]}>{member.latestRating}</Text>
+                   </View>
+                 )}
+              </View>
+            </Card>
+          ))
         )}
       </ScrollView>
     </SafeAreaView>

@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TextInput, SafeAreaView, Dimensions
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { BarChart } from 'react-native-chart-kit';
-import * as storage from '../services/storageService';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
@@ -19,10 +20,14 @@ const calcItems = [
 ];
 
 const CalculatorScreen = ({ navigation }) => {
-  const { user, footprintEntries, personalFootprints, addFootprintEntry, logActivity, allUsers } = useContext(AppContext);
+  const { user } = useContext(AppContext);
   const [inputs, setInputs] = useState({});
   const [result, setResult] = useState(null);
   const [historyTab, setHistoryTab] = useState('personal');
+  const [personalFootprints, setPersonalFootprints] = useState([]);
+  const [societyMembers, setSocietyMembers] = useState([]);
+  const [societyFootprints, setSocietyFootprints] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const [weeklyData, setWeeklyData] = useState([0, 0, 0, 0]);
   const [insightText, setInsightText] = useState("");
@@ -51,8 +56,11 @@ const CalculatorScreen = ({ navigation }) => {
   const fetchWeeklyData = async () => {
     if (!user) return;
     try {
-      const allEntries = await storage.getAllFootprintEntries() || [];
-      const userEntries = allEntries.filter(f => f.userId === user.id);
+      // Fetch personal footprint
+      const q = query(collection(db, "footprint_entries"), where("userId", "==", user.uid), orderBy("date", "desc"));
+      const snapshot = await getDocs(q);
+      const userEntries = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+      setPersonalFootprints(userEntries);
       
       const current = getISOWeekInfo();
       let weeks = [];
@@ -86,6 +94,17 @@ const CalculatorScreen = ({ navigation }) => {
       if (w4 < w3) setInsightText("📉 Great job! Your usage is decreasing.");
       else if (w4 > w3) setInsightText("📈 Your usage increased this week. Try to reduce!");
       else setInsightText("➡️ Your usage has been consistent this week.");
+      
+      if (user.role === 'admin') {
+        const hq = query(collection(db, "footprint_entries"), where("societyCode", "==", user.societyCode), orderBy("date", "desc"));
+        const hSnap = await getDocs(hq);
+        setSocietyFootprints(hSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        
+        const mq = query(collection(db, "users"), where("societyCode", "==", user.societyCode));
+        const mSnap = await getDocs(mq);
+        setSocietyMembers(mSnap.docs.map(d => ({id: d.id, ...d.data()})));
+      }
+      
     } catch (e) {
       console.log(e);
     }
@@ -115,18 +134,32 @@ const CalculatorScreen = ({ navigation }) => {
 
   const saveToDashboard = async () => {
     if (result) {
-      await addFootprintEntry({
-        id: Date.now().toString(),
-        date: new Date().toISOString(),
-        totalKg: result.totalKg,
-        items: result.totalItems,
-        rating: getFootprintProps(result.totalKg).label
-      });
-      logActivity(`Used Calculator: Logged ${result.totalItems} items (${result.totalKg.toFixed(2)} kg)`);
-      setResult(null);
-      setInputs({});
-      Alert.alert('Success', 'Saved successfully!');
-      navigation.navigate('Home');
+      try {
+        await addDoc(collection(db, "footprint_entries"), {
+          userId: user.uid,
+          societyCode: user.societyCode,
+          items: result.totalItems,
+          totalKg: result.totalKg,
+          rating: getFootprintProps(result.totalKg).label,
+          date: serverTimestamp()
+        });
+        
+        await addDoc(collection(db, "announcements"), {
+          societyCode: user.societyCode,
+          type: 'activity',
+          title: 'Footprint Logged',
+          description: `Logged ${result.totalItems} items (${result.totalKg.toFixed(2)} kg)`,
+          timestamp: Date.now()
+        });
+        
+        setResult(null);
+        setInputs({});
+        Alert.alert('Success', 'Saved successfully!');
+        navigation.navigate('Home');
+      } catch (e) {
+        Alert.alert('Error', 'Could not save data. Check your connection.');
+        console.log(e);
+      }
     }
   };
 
@@ -259,15 +292,15 @@ const CalculatorScreen = ({ navigation }) => {
               personalFootprints.map(entry => (
                 <Card key={entry.id} style={styles.historyCard}>
                   <View style={styles.historyHeader}>
-                    <Text style={styles.historyDate}>{new Date(entry.date).toLocaleDateString()}</Text>
+                    <Text style={styles.historyDate}>{entry.date?.toDate ? entry.date.toDate().toLocaleDateString() : 'Just now'}</Text>
                     <Text style={styles.historyRating}>{entry.rating}</Text>
                   </View>
                   <Text style={styles.historyKg}>{entry.totalKg.toFixed(2)} kg ({entry.items} items)</Text>
                 </Card>
               ))
             ) : (
-              allUsers.filter(u => u.societyCode === user.societyCode).map(member => {
-                const memberHistory = footprintEntries.filter(f => f.userId === member.id);
+              societyMembers.map(member => {
+                const memberHistory = societyFootprints.filter(f => f.userId === member.uid);
                 if (memberHistory.length === 0) return null;
                 const latest = memberHistory[0];
                 return (

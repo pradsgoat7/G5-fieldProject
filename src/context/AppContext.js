@@ -1,206 +1,144 @@
 import React, { createContext, useState, useEffect } from 'react';
-import * as storage from '../services/storageService';
+import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 
 export const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
-
-  // Users & Roles
-  const [allUsers, setAllUsers] = useState([]);
-  const [societies, setSocieties] = useState([]);
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
-  // Data lists
-  const [footprintEntries, setFootprintEntries] = useState([]);
-  const [recentActivity, setRecentActivity] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
-  const [pickups, setPickups] = useState([]);
-  const [redemptions, setRedemptions] = useState([]);
-  const [challengeJoined, setChallengeJoined] = useState(false);
-  const [helpfulTips, setHelpfulTips] = useState([]);
-
-  // Filtered views
-  const [societySubmissions, setSocietySubmissions] = useState([]);
-  const [societyRedemptions, setSocietyRedemptions] = useState([]);
-  const [societyPickups, setSocietyPickups] = useState([]);
-  const [personalFootprints, setPersonalFootprints] = useState([]);
-  const [personalActivity, setPersonalActivity] = useState([]);
-
-  // Derived state
-  const [points, setPoints] = useState(0);
-  const [footprint, setFootprint] = useState(0);
-  const [itemsLogged, setItemsLogged] = useState(0);
-  const [pickupsScheduled, setPickupsScheduled] = useState(0);
-  const [co2Saved] = useState(1.2);
+  const [helpfulTips, setHelpfulTips] = useState([
+    { id: '1', title: 'Bring Reusable Bags', category: 'Shopping', desc: 'Keep a few reusable bags in your car or by the door so you do not forget them.' },
+    { id: '2', title: 'Say No to Straws', category: 'Dining', desc: 'When ordering a drink, simply ask the server to hold the straw.' },
+    { id: '3', title: 'Use a Reusable Bottle', category: 'Daily', desc: 'Switching to a reusable water bottle can save hundreds of plastic bottles a year.' },
+    { id: '4', title: 'Buy in Bulk', category: 'Shopping', desc: 'Buying items in bulk reduces packaging waste. Store them in glass or reusable containers.' }
+  ]);
+  const [challengeJoined, setChallengeJoined] = useState(false); // mock for now
 
   useEffect(() => {
-    loadAllData();
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUser(userDoc.data());
+            setIsAuthenticated(true);
+          } else {
+            console.warn("User document not found in Firestore!");
+            setUser(null);
+            setIsAuthenticated(false);
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } else {
+        setUser(null);
+        setIsAuthenticated(false);
+      }
+      setIsLoading(false);
+    });
+
+    return unsubscribe;
   }, []);
 
-  // Filter logic whenever base lists or user changes
-  useEffect(() => {
-    if (!user) return;
-    const socSubs = submissions.filter(s => s.societyCode === user.societyCode);
-    const socReds = redemptions.filter(r => r.societyCode === user.societyCode);
-    const socPicks = pickups.filter(p => p.societyCode === user.societyCode);
-    const myFoots = footprintEntries.filter(f => f.userId === user.id);
-    const myAct = recentActivity.filter(a => a.userId === user.id);
-
-    setSocietySubmissions(socSubs);
-    setSocietyRedemptions(socReds);
-    setSocietyPickups(socPicks);
-    setPersonalFootprints(myFoots);
-    setPersonalActivity(myAct);
-
-    setPoints(socSubs.reduce((acc, sub) => acc + (sub.points || 0), 0) - socReds.reduce((acc, r) => acc + (r.pointsSpent || 0), 0));
-    setFootprint(myFoots[0]?.totalKg || 0);
-    setItemsLogged(myFoots.reduce((acc, curr) => acc + (curr.items || 0), 0));
-    setPickupsScheduled(socPicks.length);
-  }, [submissions, redemptions, footprintEntries, pickups, recentActivity, user]);
-
-  const loadAllData = async () => {
-    try {
-      const uProfile = await storage.getLoggedInUser();
-      const sAllUsers = await storage.getAllUsers();
-      const sSocieties = await storage.getSocieties();
-      setAllUsers(sAllUsers || []);
-      setSocieties(sSocieties || []);
-
-      if (uProfile) {
-        setUser(uProfile);
-        setIsAuthenticated(true);
-      }
-
-      setFootprintEntries(await storage.getAllFootprintEntries() || []);
-      setSubmissions(await storage.getAllSubmissions() || []);
-      setPickups(await storage.getAllPickups() || []);
-      setRedemptions(await storage.getAllRedemptions() || []);
-      setRecentActivity(await storage.getRecentActivity() || []);
-      
-      const chal = await storage.getChallengeJoined();
-      setChallengeJoined(chal || false);
-      setHelpfulTips(await storage.getHelpfulTips() || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Auth Functions
   const registerAdmin = async (name, societyName, email, password) => {
-    const societyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
-    if (societies.find(s => s.societyName.toLowerCase() === societyName.toLowerCase())) {
-      throw new Error(`A society with this name already exists. If you are a resident, register as a Member.`);
+    try {
+      const societyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
+
+      await setDoc(doc(db, "users", uid), {
+        uid,
+        name,
+        email,
+        role: "admin",
+        societyCode,
+        societyName,
+        createdAt: Date.now()
+      });
+
+      await setDoc(doc(db, "societies", societyCode), {
+        societyCode,
+        societyName,
+        adminEmail: email,
+        adminUid: uid,
+        memberCount: 1,
+        registrationDate: Date.now(),
+        totalPointsEarned: 0
+      });
+
+      return societyCode;
+    } catch (error) {
+      console.error("registerAdmin error:", error);
+      throw new Error(error.message);
     }
-
-    const newSociety = { societyCode, societyName, adminEmail: email, registrationDate: Date.now() };
-    const navSoc = [...societies, newSociety];
-    setSocieties(navSoc);
-    console.log("Generated society code:", societyCode);
-    await storage.saveSocieties(navSoc);
-    console.log("Successfully saved society to AsyncStorage");
-
-    const newUser = { id: Date.now().toString(), name, email, password, role: 'admin', societyCode, societyName };
-    const navUsers = [...allUsers, newUser];
-    setAllUsers(navUsers);
-    await storage.saveAllUsers(navUsers);
-
-    // Do not auto-login admins so they can see the Success Screen and then proceed to Login manually
-    return societyCode;
   };
 
   const registerMember = async (name, email, societyCode, password) => {
-    const soc = societies.find(s => s.societyCode === societyCode);
-    if (!soc) throw new Error('Invalid society code. Please check with your society admin.');
+    try {
+      const societyDocRef = doc(db, "societies", societyCode);
+      const societyDoc = await getDoc(societyDocRef);
 
-    const newUser = { id: Date.now().toString(), name, email, password, role: 'member', societyCode, societyName: soc.societyName };
-    const navUsers = [...allUsers, newUser];
-    setAllUsers(navUsers);
-    await storage.saveAllUsers(navUsers);
+      if (!societyDoc.exists()) {
+        throw new Error('Invalid society code. Please check with your society admin.');
+      }
 
-    setUser(newUser);
-    setIsAuthenticated(true);
-    await storage.saveLoggedInUser(newUser);
-  };
+      const societyData = societyDoc.data();
 
-  const loginByCredentials = async (email, password) => {
-    const found = allUsers.find(u => u.email === email && u.password === password);
-    if (!found) throw new Error('Invalid email or password.');
-    
-    setUser(found);
-    setIsAuthenticated(true);
-    await storage.saveLoggedInUser(found);
-  };
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
 
-  const logout = async () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    await storage.saveLoggedInUser(null);
-  };
+      await setDoc(doc(db, "users", uid), {
+        uid,
+        name,
+        email,
+        role: "member",
+        societyCode,
+        societyName: societyData.societyName,
+        createdAt: Date.now()
+      });
 
-  // Writes
-  const logActivity = async (title) => {
-    const newEntry = { id: Date.now().toString(), title, date: new Date().toISOString(), userId: user?.id, societyCode: user?.societyCode };
-    const updated = [newEntry, ...recentActivity];
-    setRecentActivity(updated);
-    await storage.saveRecentActivity(updated);
-  };
-
-  const addFootprintEntry = async (entry) => {
-    const updated = [{ ...entry, userId: user?.id, societyCode: user?.societyCode }, ...footprintEntries];
-    setFootprintEntries(updated);
-    await storage.saveFootprintEntries(updated);
-  };
-
-  const addSubmission = async (entry) => {
-    const updated = [{ ...entry, societyCode: user?.societyCode }, ...submissions];
-    setSubmissions(updated);
-    await storage.saveSubmissions(updated);
-  };
-
-  const addPickup = async (entry) => {
-    const updated = [{ ...entry, societyCode: user?.societyCode }, ...pickups];
-    setPickups(updated);
-    await storage.savePickups(updated);
-  };
-
-  const updatePickupStatus = async (id, status) => {
-    const updated = pickups.map(p => p.id === id ? { ...p, status } : p);
-    setPickups(updated);
-    await storage.savePickups(updated);
-    if (status === 'Completed') {
-      // Auto add 50 points to society
-      await addSubmission({ id: Date.now().toString() + 'bonus', date: new Date().toISOString(), type: 'Pickup Bonus', kg: 0, points: 50 });
+      await updateDoc(societyDocRef, {
+        memberCount: increment(1)
+      });
+      
+    } catch (error) {
+      console.error("registerMember error:", error);
+      throw new Error(error.message);
     }
   };
 
-  const addRedemption = async (entry) => {
-    const updated = [{ ...entry, societyCode: user?.societyCode }, ...redemptions];
-    setRedemptions(updated);
-    await storage.saveRedemptions(updated);
+  const loginByCredentials = async (email, password) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      console.error("loginByCredentials error:", error);
+      throw new Error('Invalid email or password.');
+    }
   };
 
-  const toggleChallenge = async () => {
-    // Challenge per user logic would save locally per device usually, but let's keep it simple
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("logout error:", error);
+    }
+  };
+
+  const toggleChallenge = () => {
     setChallengeJoined(!challengeJoined);
-    await storage.saveChallengeJoined(!challengeJoined);
   };
 
   return (
     <AppContext.Provider value={{
-      isLoading, isAuthenticated,
-      user, societies, allUsers,
+      isLoading, isAuthenticated, user,
       registerAdmin, registerMember, loginByCredentials, logout,
-      points, footprint, itemsLogged, pickupsScheduled, co2Saved,
-      footprintEntries, personalFootprints, addFootprintEntry,
-      submissions, societySubmissions, addSubmission,
-      pickups, societyPickups, addPickup, updatePickupStatus,
-      redemptions, societyRedemptions, addRedemption,
-      recentActivity, personalActivity, logActivity,
       challengeJoined, toggleChallenge,
       helpfulTips, setHelpfulTips
     }}>
