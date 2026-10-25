@@ -14,6 +14,7 @@ export default {
     copiedCode: 'Society code copied to clipboard.',
     copy: '[Copy]',
     connectionError: 'Something went wrong. Check your connection and try again.',
+    permissionDenied: 'The database refused this action. The Firestore security rules may need to be republished in the Firebase Console.',
     justNow: 'Just now',
     none: '-'
   },

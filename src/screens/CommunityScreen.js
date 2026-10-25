@@ -9,7 +9,7 @@ import Button from '../components/Button';
 import { AppContext } from '../context/AppContext';
 import { useTranslation, getLocale } from '../i18n';
 import { getWeekInfo, joinDocId, participationShare } from '../services/challengeService';
-import { showMessage } from '../services/dialogs';
+import { showMessage, describeError } from '../services/dialogs';
 
 const { width } = Dimensions.get('window');
 
@@ -133,7 +133,7 @@ const CommunityScreen = () => {
       }
     } catch (e) {
       console.error("Challenge join error:", e);
-      showMessage(t('common.error'), t('common.connectionError'));
+      showMessage(t('common.error'), describeError(e));
     } finally {
       setIsJoining(false);
     }

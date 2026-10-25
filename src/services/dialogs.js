@@ -11,6 +11,11 @@ export const showMessage = (title, message) => {
   }
 };
 
+// Firestore says "permission-denied" when the published security rules don't allow a write,
+// which is a setup problem rather than a network one
+export const describeError = (error) =>
+  error?.code === 'permission-denied' ? translate('common.permissionDenied') : translate('common.connectionError');
+
 export const askConfirm = (title, message, confirmText = translate('common.yes')) => {
   if (Platform.OS === 'web') {
     return Promise.resolve(window.confirm(`${title}\n\n${message}`));

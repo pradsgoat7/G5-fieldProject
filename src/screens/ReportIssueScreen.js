@@ -9,7 +9,7 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import WardPicker from '../components/WardPicker';
 import ComplaintStatusBadge from '../components/ComplaintStatusBadge';
-import { showMessage } from '../services/dialogs';
+import { showMessage, describeError } from '../services/dialogs';
 import { capturePhoto, getCurrentLocation, formatTimestamp } from '../services/pickupService';
 import {
   COMPLAINT_CATEGORIES, complaintCategoryLabel, submitComplaint
@@ -74,7 +74,7 @@ const ReportIssueScreen = ({ navigation }) => {
       setPhoto(null);
     } catch (e) {
       console.error("Complaint submit error:", e);
-      showMessage(t('common.error'), t('common.connectionError'));
+      showMessage(t('common.error'), describeError(e));
     } finally {
       setIsSubmitting(false);
     }

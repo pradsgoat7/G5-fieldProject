@@ -14,6 +14,7 @@ export default {
     copiedCode: 'सोसायटी कोड क्लिपबोर्डवर कॉपी झाला.',
     copy: '[कॉपी करा]',
     connectionError: 'काहीतरी चुकले. तुमचे इंटरनेट कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.',
+    permissionDenied: 'डेटाबेसने ही कृती नाकारली. Firebase Console मध्ये Firestore सुरक्षा नियम पुन्हा प्रकाशित करावे लागतील.',
     justNow: 'आत्ताच',
     none: '-'
   },

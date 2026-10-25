@@ -8,7 +8,7 @@ import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import ComplaintStatusBadge from '../components/ComplaintStatusBadge';
-import { showMessage, askConfirm } from '../services/dialogs';
+import { showMessage, askConfirm, describeError } from '../services/dialogs';
 import { formatTimestamp } from '../services/pickupService';
 import { getWardLabel } from '../services/wards';
 import {
@@ -77,7 +77,7 @@ const ComplaintDetailScreen = ({ route, navigation }) => {
       setNote('');
     } catch (e) {
       console.error("Complaint update error:", e);
-      showMessage(t('common.error'), t('review.saveError'));
+      showMessage(t('common.error'), e?.code === 'permission-denied' ? describeError(e) : t('review.saveError'));
     } finally {
       setIsSaving(false);
     }
