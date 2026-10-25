@@ -24,6 +24,26 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
     }
 
+    // Keep in sync with src/services/wards.js
+    function validWard(ward) {
+      return ward in ['A', 'B', 'C', 'D', 'E', 'F/N', 'F/S', 'G/N', 'G/S', 'H/E', 'H/W', 'K/E', 'K/W',
+                      'L', 'M/E', 'M/W', 'N', 'P/N', 'P/S', 'R/C', 'R/N', 'R/S', 'S', 'T'];
+    }
+
+    // A ward can be set once (for accounts created before wards existed) but never changed
+    function wardSetOnce() {
+      return ('ward' in resource.data)
+        ? unchanged(['ward'])
+        : (!('ward' in request.resource.data) || validWard(request.resource.data.ward));
+    }
+
+    // Officials only act on their own ward; societies without a ward yet are open to any official
+    function inMyWard(societyCode) {
+      return ('ward' in me())
+        && (!('ward' in get(/databases/$(database)/documents/societies/$(societyCode)).data)
+          || get(/databases/$(database)/documents/societies/$(societyCode)).data.ward == me().ward);
+    }
+
     // Vendor / BMC official invite codes: looked up by exact code only, never listed or written from the app
     match /invite_codes/{code} {
       allow get: if true;
@@ -34,20 +54,27 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid && (
         // A new admin creates a brand-new society, so they can't take over an existing one
         (request.resource.data.role == 'admin'
+          && validWard(request.resource.data.ward)
           && !exists(/databases/$(database)/documents/societies/$(request.resource.data.societyCode))) ||
         (request.resource.data.role == 'member'
           && exists(/databases/$(database)/documents/societies/$(request.resource.data.societyCode))) ||
         (request.resource.data.role in ['vendor', 'bmc_official']
+          && validWard(request.resource.data.ward)
           && get(/databases/$(database)/documents/invite_codes/$(request.resource.data.inviteCode)).data.role == request.resource.data.role)
       );
-      allow update: if signedIn() && request.auth.uid == uid && unchanged(['role', 'societyCode', 'inviteCode']);
+      allow update: if signedIn() && request.auth.uid == uid
+        && unchanged(['role', 'societyCode', 'inviteCode'])
+        && wardSetOnce();
     }
 
     // Member sign-up checks the society code before the account exists
     match /societies/{code} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.adminUid == request.auth.uid;
-      allow update: if inMySociety(code);
+      allow create: if signedIn()
+        && request.resource.data.adminUid == request.auth.uid
+        && validWard(request.resource.data.ward);
+      allow update: if inMySociety(code)
+        && (unchanged(['ward']) || (hasRole('admin') && wardSetOnce()));
     }
 
     // Collection flow: society schedules -> vendor weighs -> BMC official verifies -> society confirms
@@ -65,6 +92,7 @@ service cloud.firestore {
           && unchanged(['societyCode', 'vendorUid', 'verifiedBy', 'pointsAwarded'])) ||
         // BMC official approves, or sends back for re-weighing
         (hasRole('bmc_official')
+          && inMyWard(resource.data.societyCode)
           && resource.data.status == 'Weighed'
           && request.resource.data.status in ['Verified', 'Scheduled']
           && unchanged(['societyCode', 'vendorUid', 'items', 'totalKg', 'grade', 'location', 'weighedAt', 'pointsAwarded'])) ||

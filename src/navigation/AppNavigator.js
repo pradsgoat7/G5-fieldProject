@@ -25,6 +25,7 @@ import VendorHomeScreen from '../screens/VendorHomeScreen';
 import WeighPickupScreen from '../screens/WeighPickupScreen';
 import OfficialHomeScreen from '../screens/OfficialHomeScreen';
 import PickupReviewScreen from '../screens/PickupReviewScreen';
+import WardDashboardScreen from '../screens/WardDashboardScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -81,11 +82,30 @@ const MemberTabs = () => {
   );
 };
 
+const OfficialTabs = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ color, size }) => {
+          const iconName = route.name === 'Dashboard' ? 'view-dashboard' : 'shield-check';
+          return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: 'gray',
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Dashboard" component={WardDashboardScreen} />
+      <Tab.Screen name="Verify" component={OfficialHomeScreen} />
+    </Tab.Navigator>
+  );
+};
+
 const MAIN_BY_ROLE = {
   admin: AdminTabs,
   member: MemberTabs,
   vendor: VendorHomeScreen,
-  bmc_official: OfficialHomeScreen
+  bmc_official: OfficialTabs
 };
 
 const AppNavigator = () => {

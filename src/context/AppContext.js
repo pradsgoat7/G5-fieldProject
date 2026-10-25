@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
 export const AppContext = createContext();
@@ -64,7 +64,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const registerAdmin = async (name, societyName, email, password) => {
+  const registerAdmin = async (name, societyName, ward, email, password) => {
     let createdUser = null;
     try {
       const societyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -80,12 +80,14 @@ export const AppProvider = ({ children }) => {
         role: "admin",
         societyCode,
         societyName,
+        ward,
         createdAt: Date.now()
       });
 
       await setDoc(doc(db, "societies", societyCode), {
         societyCode,
         societyName,
+        ward,
         adminEmail: email,
         adminUid: uid,
         memberCount: 1,
@@ -124,6 +126,7 @@ export const AppProvider = ({ children }) => {
         role: "member",
         societyCode,
         societyName: societyData.societyName,
+        ...(societyData.ward ? { ward: societyData.ward } : {}),
         createdAt: Date.now()
       };
       await setDoc(doc(db, "users", uid), userData);
@@ -143,7 +146,7 @@ export const AppProvider = ({ children }) => {
   };
 
   // Vendors and BMC officials join with an invite code; the code decides which role they get
-  const registerStaff = async (name, organization, inviteCode, email, password) => {
+  const registerStaff = async (name, organization, ward, inviteCode, email, password) => {
     let createdUser = null;
     try {
       const code = inviteCode.trim().toUpperCase();
@@ -164,6 +167,7 @@ export const AppProvider = ({ children }) => {
         email,
         role,
         organization,
+        ward,
         inviteCode: code,
         createdAt: Date.now()
       };
@@ -177,6 +181,17 @@ export const AppProvider = ({ children }) => {
       await rollbackAuthUser(createdUser);
       throw new Error(friendlyAuthError(error));
     }
+  };
+
+  // For accounts created before wards existed; security rules only allow setting it once
+  const setMyWard = async (ward) => {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "users", user.uid), { ward });
+    if (user.role === 'admin') {
+      batch.update(doc(db, "societies", user.societyCode), { ward });
+    }
+    await batch.commit();
+    setUser(prev => ({ ...prev, ward }));
   };
 
   const loginByCredentials = async (email, password) => {
@@ -203,7 +218,7 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider value={{
       isLoading, isAuthenticated, user,
-      registerAdmin, registerMember, registerStaff, loginByCredentials, logout,
+      registerAdmin, registerMember, registerStaff, loginByCredentials, logout, setMyWard,
       challengeJoined, toggleChallenge,
       helpfulTips, setHelpfulTips
     }}>

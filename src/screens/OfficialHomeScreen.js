@@ -7,13 +7,16 @@ import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import { StatusBadge } from '../components/PickupDetails';
+import { WardSetupCard } from '../components/WardPicker';
 import { PICKUP_STATUS, formatDate, formatTimestamp } from '../services/pickupService';
+import { getWardLabel } from '../services/wards';
 
 const OfficialHomeScreen = ({ navigation }) => {
   const { user, logout } = useContext(AppContext);
   const [tab, setTab] = useState('pending');
   const [pending, setPending] = useState([]);
   const [history, setHistory] = useState([]);
+  const [societyWards, setSocietyWards] = useState({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -38,13 +41,21 @@ const OfficialHomeScreen = ({ navigation }) => {
       },
       (error) => console.log("Error fetching verification history", error)
     );
+    const unsubSocieties = onSnapshot(collection(db, "societies"), (snapshot) => {
+      setSocietyWards(Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().ward || null])));
+    }, (error) => console.log("Error fetching societies", error));
     return () => {
       unsubPending();
       unsubHistory();
+      unsubSocieties();
     };
   }, [user]);
 
-  const list = tab === 'pending' ? pending : history;
+  // Societies that haven't picked a ward yet stay visible to every official so their collections don't get stuck
+  const myPending = user?.ward
+    ? pending.filter(p => !societyWards[p.societyCode] || societyWards[p.societyCode] === user.ward)
+    : [];
+  const list = tab === 'pending' ? myPending : history;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -60,11 +71,15 @@ const OfficialHomeScreen = ({ navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.greeting}>Hello, {user?.name}</Text>
-        <Text style={styles.subtitle}>{user?.organization} • BMC Official</Text>
+        <Text style={styles.subtitle}>{user?.organization} • BMC Official • {getWardLabel(user?.ward)}</Text>
+
+        {!user?.ward && (
+          <WardSetupCard message="Select the ward you oversee. You will only see and verify collections from societies in that ward." />
+        )}
 
         <View style={styles.tabs}>
           <TouchableOpacity style={[styles.tab, tab === 'pending' && styles.tabActive]} onPress={() => setTab('pending')}>
-            <Text style={[styles.tabText, tab === 'pending' && styles.tabTextActive]}>To Verify ({pending.length})</Text>
+            <Text style={[styles.tabText, tab === 'pending' && styles.tabTextActive]}>To Verify ({myPending.length})</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.tab, tab === 'history' && styles.tabActive]} onPress={() => setTab('history')}>
             <Text style={[styles.tabText, tab === 'history' && styles.tabTextActive]}>Verified by Me ({history.length})</Text>
@@ -85,6 +100,7 @@ const OfficialHomeScreen = ({ navigation }) => {
                   <Text style={styles.societyName}>{p.societyName}</Text>
                   <StatusBadge status={p.status} />
                 </View>
+                {!societyWards[p.societyCode] && <Text style={styles.wardWarning}>⚠️ Society has not set its ward yet</Text>}
                 <Text style={styles.detail}>Vendor: {p.vendorName}</Text>
                 <Text style={styles.detail}>
                   {(p.totalKg || 0).toFixed(2)} kg • Grade {p.grade} • {p.location ? '📍 Located' : '⚠️ No location'}
@@ -120,7 +136,8 @@ const styles = StyleSheet.create({
   emptyText: { textAlign: 'center', color: colors.textSecondary, marginTop: 20 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   societyName: { fontSize: 16, fontWeight: 'bold', color: colors.textPrimary, flexShrink: 1, marginRight: 8 },
-  detail: { fontSize: 14, color: colors.textSecondary, marginTop: 2 }
+  detail: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  wardWarning: { fontSize: 13, color: colors.warning, marginBottom: 2 }
 });
 
 export default OfficialHomeScreen;

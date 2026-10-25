@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { collection, doc, onSnapshot, updateDoc, writeBatch, serverTimestamp, increment } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, updateDoc, writeBatch, serverTimestamp, increment } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
@@ -21,6 +21,7 @@ const PickupReviewScreen = ({ route, navigation }) => {
   const [notFound, setNotFound] = useState(false);
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [societyWard, setSocietyWard] = useState(undefined);
 
   useEffect(() => {
     if (!pickupId) return;
@@ -34,7 +35,16 @@ const PickupReviewScreen = ({ route, navigation }) => {
     return () => unsubscribe();
   }, [pickupId]);
 
-  const canVerify = user?.role === 'bmc_official' && pickup?.status === PICKUP_STATUS.WEIGHED;
+  useEffect(() => {
+    if (!pickup?.societyCode) return;
+    getDoc(doc(db, "societies", pickup.societyCode))
+      .then((snap) => setSocietyWard(snap.exists() ? (snap.data().ward || null) : null))
+      .catch((e) => console.error("Error loading society ward", e));
+  }, [pickup?.societyCode]);
+
+  // Officials verify only their own ward; societies without a ward yet are open to any official
+  const inMyWard = societyWard !== undefined && (!societyWard || societyWard === user?.ward);
+  const canVerify = user?.role === 'bmc_official' && !!user?.ward && inMyWard && pickup?.status === PICKUP_STATUS.WEIGHED;
   const canConfirm = user?.role === 'admin' && pickup?.societyCode === user.societyCode && pickup?.status === PICKUP_STATUS.VERIFIED;
 
   const run = async (action) => {

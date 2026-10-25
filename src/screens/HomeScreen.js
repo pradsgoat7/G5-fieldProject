@@ -7,6 +7,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
+import { WardSetupCard } from '../components/WardPicker';
+import { getWardLabel } from '../services/wards';
 
 const HomeScreen = ({ navigation }) => {
   const { user, logout } = useContext(AppContext);
@@ -157,7 +159,7 @@ const HomeScreen = ({ navigation }) => {
               <Text style={{ color: user?.role === 'admin' ? '#FFF' : '#5C5C5C', fontSize: 10, fontWeight: 'bold' }}>{user?.role === 'admin' ? 'ADMIN' : 'MEMBER'}</Text>
             </View>
           </View>
-          <Text style={styles.society}>{user?.societyName}</Text>
+          <Text style={styles.society}>{user?.societyName}{user?.ward ? ` • ${getWardLabel(user.ward)}` : ''}</Text>
           {user?.role === 'admin' && (
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: '#E8F5E9', padding: 8, borderRadius: 6, alignSelf: 'flex-start' }}>
               <Text style={{ fontSize: 13, color: colors.textSecondary }}>Your Society Code: </Text>
@@ -169,6 +171,10 @@ const HomeScreen = ({ navigation }) => {
                 <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600', textDecorationLine: 'underline' }}>[Copy]</Text>
               </TouchableOpacity>
             </View>
+          )}
+
+          {user?.role === 'admin' && !user?.ward && (
+            <WardSetupCard message="Your society was registered before wards were added. Select its BMC ward so the right ward officer can verify your collections." />
           )}
 
           {/* Smart Highlight: Active Polls Banner */}

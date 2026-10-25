@@ -6,6 +6,7 @@ import { AppContext } from '../context/AppContext';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import { colors } from '../theme/colors';
+import WardPicker from '../components/WardPicker';
 
 const LoginScreen = ({ navigation }) => {
   const { loginByCredentials, registerAdmin, registerMember, registerStaff } = useContext(AppContext);
@@ -16,6 +17,7 @@ const LoginScreen = ({ navigation }) => {
   const [societyCode, setSocietyCode] = useState('');
   const [organization, setOrganization] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [ward, setWard] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,7 +34,7 @@ const LoginScreen = ({ navigation }) => {
         }
         await loginByCredentials(email, password);
       } else if (mode === 'register_admin') {
-        if (!name || !email || !password || !societyName) {
+        if (!name || !email || !password || !societyName || !ward) {
           Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
           return;
         }
@@ -40,7 +42,7 @@ const LoginScreen = ({ navigation }) => {
           Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
           return;
         }
-        const code = await registerAdmin(name, societyName, email, password);
+        const code = await registerAdmin(name, societyName, ward, email, password);
         
         if (Platform.OS === 'web') {
           window.alert(`Society Registered! 🎉\nYour Society Code is: ${code}\n\nPlease save this code and share it with your residents so they can join your society on PlasticTrack.`);
@@ -86,7 +88,7 @@ const LoginScreen = ({ navigation }) => {
         }
         await registerMember(name, email, societyCode, password);
       } else if (mode === 'register_staff') {
-        if (!name || !organization || !inviteCode || !email || !password) {
+        if (!name || !organization || !ward || !inviteCode || !email || !password) {
           Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
           return;
         }
@@ -94,7 +96,7 @@ const LoginScreen = ({ navigation }) => {
           Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
           return;
         }
-        await registerStaff(name, organization, inviteCode, email, password);
+        await registerStaff(name, organization, ward, inviteCode, email, password);
       }
     } catch (e) {
       Platform.OS === 'web' ? window.alert(e.message) : Alert.alert('Error', e.message);
@@ -141,7 +143,10 @@ const LoginScreen = ({ navigation }) => {
           )}
           
           {mode === 'register_admin' && (
-            <TextInput style={styles.input} placeholder="Society Name" value={societyName} onChangeText={setSocietyName} />
+            <>
+              <TextInput style={styles.input} placeholder="Society Name" value={societyName} onChangeText={setSocietyName} />
+              <WardPicker value={ward} onChange={setWard} placeholder="BMC Ward of your society" />
+            </>
           )}
 
           {mode === 'register_member' && (
@@ -150,7 +155,8 @@ const LoginScreen = ({ navigation }) => {
 
           {mode === 'register_staff' && (
             <>
-              <TextInput style={styles.input} placeholder="Company Name / BMC Ward" value={organization} onChangeText={setOrganization} />
+              <TextInput style={styles.input} placeholder="Company / Department Name" value={organization} onChangeText={setOrganization} />
+              <WardPicker value={ward} onChange={setWard} placeholder="BMC Ward (you oversee / mainly serve)" />
               <TextInput style={styles.input} placeholder="Invite Code" value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
             </>
           )}
