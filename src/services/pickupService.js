@@ -147,14 +147,14 @@ const compressPhoto = async (uri) => {
     const dataUri = `data:image/jpeg;base64,${result.base64}`;
     if (dataUri.length <= MAX_PHOTO_CHARS) return dataUri;
   }
-  throw new Error(translate('weigh.photoTooLarge'));
+  throw new Error(translate('photo.tooLarge'));
 };
 
-// Returns a compressed data URI, or null if the vendor cancelled
-export const captureScalePhoto = async () => {
+// Returns a compressed data URI, or null if the user cancelled
+export const capturePhoto = async () => {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (!permission.granted) {
-    throw new Error(translate('weigh.cameraPermission'));
+    throw new Error(translate('photo.cameraPermission'));
   }
   const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
   if (result.canceled || !result.assets?.length) return null;

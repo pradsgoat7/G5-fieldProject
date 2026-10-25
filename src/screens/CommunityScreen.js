@@ -1,13 +1,15 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Dimensions, TextInput, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { AppContext } from '../context/AppContext';
 import { useTranslation, getLocale } from '../i18n';
+import { getWeekInfo, joinDocId, participationShare } from '../services/challengeService';
+import { showMessage } from '../services/dialogs';
 
 const { width } = Dimensions.get('window');
 
@@ -23,8 +25,11 @@ const POSTS = [
 ];
 
 const CommunityScreen = () => {
-  const { challengeJoined, toggleChallenge, user } = useContext(AppContext);
+  const { user } = useContext(AppContext);
   const { t } = useTranslation();
+  const week = getWeekInfo();
+  const [weekJoins, setWeekJoins] = useState([]);
+  const [isJoining, setIsJoining] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const [localPosts, setLocalPosts] = useState([]);
   
@@ -88,15 +93,50 @@ const CommunityScreen = () => {
       setLocalPosts(data);
     });
 
+    // Everyone in the society who joined this week's challenge
+    const unsubJoins = onSnapshot(
+      query(collection(db, "challenge_joins"), where("societyCode", "==", user.societyCode), where("weekId", "==", week.weekId)),
+      (snapshot) => setWeekJoins(snapshot.docs.map(d => d.data())),
+      (error) => console.log("Error fetching challenge joins", error)
+    );
+
     return () => {
       unsubSocieties();
       unsubPosts();
+      unsubJoins();
     };
-  }, [user]);
+  }, [user, week.weekId]);
 
+  const mySociety = lbItems.find(s => s.societyCode === user?.societyCode);
+  const memberCount = mySociety?.membersCount || 1;
+  const hasJoined = weekJoins.some(j => j.uid === user?.uid);
+  const share = participationShare(weekJoins.length, memberCount);
+  const joinedNames = weekJoins.filter(j => j.uid !== user?.uid).map(j => j.name);
+
+  // Tapping again leaves the challenge
   const handleJoin = async () => {
-    await toggleChallenge();
-    if (!challengeJoined) logActivity('Joined the Weekly Challenge!');
+    if (isJoining) return;
+    setIsJoining(true);
+    const ref = doc(db, "challenge_joins", joinDocId(week.weekId, user.uid));
+    try {
+      if (hasJoined) {
+        await deleteDoc(ref);
+      } else {
+        await setDoc(ref, {
+          weekId: week.weekId,
+          challengeId: week.challengeId,
+          uid: user.uid,
+          name: user.name,
+          societyCode: user.societyCode,
+          joinedAt: serverTimestamp()
+        });
+      }
+    } catch (e) {
+      console.error("Challenge join error:", e);
+      showMessage(t('common.error'), t('common.connectionError'));
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   const postAnnouncement = async () => {
@@ -132,16 +172,31 @@ const CommunityScreen = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Card style={styles.challengeCard}>
-          <Text style={styles.challengeBadge}>{t('community.weeklyChallenge')}</Text>
-          <Text style={styles.challengeText}>{t('community.challengeText')}</Text>
-          <Text style={styles.progressLabel}>{t('community.participation', { percent: 67 })}</Text>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: '67%' }]} />
+          <View style={styles.challengeHeader}>
+            <Text style={styles.challengeBadge}>{t('community.weeklyChallenge')}</Text>
+            <Text style={styles.challengeEnds}>
+              {week.daysLeft === 0 ? t('community.endsToday') : t('community.endsIn', { count: week.daysLeft })}
+            </Text>
           </View>
+          <Text style={styles.challengeText}>{t(`community.challenges.${week.challengeId}`)}</Text>
+          <Text style={styles.progressLabel}>
+            {t('community.participationCount', { joined: weekJoins.length, total: memberCount, percent: Math.round(share * 100) })}
+          </Text>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${Math.round(share * 100)}%` }]} />
+          </View>
+          {joinedNames.length > 0 && (
+            <Text style={styles.joinedNames}>
+              {joinedNames.length <= 3
+                ? t('community.joinedNames', { names: joinedNames.join(', ') })
+                : t('community.joinedNamesMore', { names: joinedNames.slice(0, 3).join(', '), count: joinedNames.length - 3 })}
+            </Text>
+          )}
           <Button 
-            title={challengeJoined ? t('community.joined') : t('community.join')} 
-            type={challengeJoined ? "secondary" : "primary"}
+            title={isJoining ? t('common.pleaseWait') : (hasJoined ? t('community.joinedLeave') : t('community.join'))} 
+            type={hasJoined ? "secondary" : "primary"}
             onPress={handleJoin}
+            disabled={isJoining}
             style={styles.joinButton} 
           />
         </Card>
@@ -318,11 +373,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 20,
   },
+  challengeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
   challengeBadge: {
     fontSize: 14,
     fontWeight: 'bold',
     color: colors.primary,
-    marginBottom: 5,
+  },
+  challengeEnds: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  joinedNames: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 12,
   },
   challengeText: {
     fontSize: 18,

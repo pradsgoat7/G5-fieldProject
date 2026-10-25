@@ -27,6 +27,9 @@ import WeighPickupScreen from '../screens/WeighPickupScreen';
 import OfficialHomeScreen from '../screens/OfficialHomeScreen';
 import PickupReviewScreen from '../screens/PickupReviewScreen';
 import WardDashboardScreen from '../screens/WardDashboardScreen';
+import ComplaintsScreen from '../screens/ComplaintsScreen';
+import ReportIssueScreen from '../screens/ReportIssueScreen';
+import ComplaintDetailScreen from '../screens/ComplaintDetailScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -40,7 +43,8 @@ const TAB_LABEL_KEYS = {
   'Community': 'tabs.community',
   'Society Points': 'tabs.societyPoints',
   'Dashboard': 'tabs.dashboard',
-  'Verify': 'tabs.verify'
+  'Verify': 'tabs.verify',
+  'Complaints': 'tabs.complaints'
 };
 
 const AdminTabs = () => {
@@ -105,7 +109,7 @@ const OfficialTabs = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
-          const iconName = route.name === 'Dashboard' ? 'view-dashboard' : 'shield-check';
+          const iconName = { Dashboard: 'view-dashboard', Verify: 'shield-check', Complaints: 'alert-octagon' }[route.name];
           return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
         },
         tabBarLabel: t(TAB_LABEL_KEYS[route.name]),
@@ -116,6 +120,7 @@ const OfficialTabs = () => {
     >
       <Tab.Screen name="Dashboard" component={WardDashboardScreen} />
       <Tab.Screen name="Verify" component={OfficialHomeScreen} />
+      <Tab.Screen name="Complaints" component={ComplaintsScreen} />
     </Tab.Navigator>
   );
 };
@@ -156,6 +161,8 @@ const AppNavigator = () => {
           <Stack.Screen name="FAQ" component={FAQScreen} />
           <Stack.Screen name="WeighPickup" component={WeighPickupScreen} />
           <Stack.Screen name="PickupReview" component={PickupReviewScreen} />
+          <Stack.Screen name="ReportIssue" component={ReportIssueScreen} />
+          <Stack.Screen name="ComplaintDetail" component={ComplaintDetailScreen} />
         </>
       )}
     </Stack.Navigator>

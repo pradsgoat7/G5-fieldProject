@@ -212,6 +212,20 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
 
           <TouchableOpacity 
+             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF3E0', padding: 15, borderRadius: 12, marginTop: 15, borderWidth: 1, borderColor: '#FFCC80' }}
+             onPress={() => navigation.navigate('ReportIssue')}
+          >
+             <View style={{flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+                <MaterialCommunityIcons name="camera-marker" size={24} color="#E65100" />
+                <View style={{ marginLeft: 10, flexShrink: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#E65100' }}>{t('home.reportProblem')}</Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>{t('home.reportProblemHint')}</Text>
+                </View>
+             </View>
+             <MaterialCommunityIcons name="chevron-right" size={24} color="#E65100" />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', padding: 15, borderRadius: 12, marginTop: 15, borderWidth: 1, borderColor: '#E0E0E0' }}
              onPress={() => navigation.navigate('FAQ')}
           >

@@ -10,7 +10,7 @@ import Button from '../components/Button';
 import { showMessage, askConfirm } from '../services/dialogs';
 import {
   PICKUP_STATUS, RECYCLABLE_TYPES, NON_RECYCLABLE_TYPES, GRADES, gradeLabel, gradeDesc, plasticName, timeSlotLabel,
-  computePickupPoints, formatDate, captureScalePhoto, getCurrentLocation
+  computePickupPoints, formatDate, capturePhoto, getCurrentLocation
 } from '../services/pickupService';
 import { useTranslation } from '../i18n';
 
@@ -48,7 +48,7 @@ const WeighPickupScreen = ({ route, navigation }) => {
   const takePhoto = async () => {
     setIsCapturing(true);
     try {
-      const dataUri = await captureScalePhoto();
+      const dataUri = await capturePhoto();
       if (dataUri) setPhoto(dataUri);
     } catch (e) {
       showMessage(t('weigh.photoFailed'), e.message);

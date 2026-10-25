@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Pressable, ActivityIndicator, Platform, Share } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
@@ -11,9 +11,11 @@ import { WardSetupCard } from '../components/WardPicker';
 import { getWardLabel } from '../services/wards';
 import { GRADES, gradeLabel, plasticName, formatDate, toDateString } from '../services/pickupService';
 import {
-  PERIODS, periodLabel, societyStatusLabel, buildWardReport, buildMonthlyTrend, buildWardCsv
+  PERIODS, periodLabel, societyStatusLabel, buildWardReport, buildMonthlyTrend, buildWardCsv, buildVendorStats,
+  VENDOR_ON_TIME_TARGET, VENDOR_SENT_BACK_LIMIT
 } from '../services/wardReport';
 import { useTranslation, translate } from '../i18n';
+import { isComplaintOpen } from '../services/complaintService';
 import LanguageToggle from '../components/LanguageToggle';
 
 // Validated categorical slots (colorblind-safe pair); text never uses these colors
@@ -94,6 +96,7 @@ const WardDashboardScreen = ({ navigation }) => {
   const [pickups, setPickups] = useState([]);
   const [societies, setSocieties] = useState([]);
   const [periodId, setPeriodId] = useState(PERIODS[0].id);
+  const [openComplaints, setOpenComplaints] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -113,6 +116,14 @@ const WardDashboardScreen = ({ navigation }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user?.ward) return;
+    const unsubscribe = onSnapshot(query(collection(db, "complaints"), where("ward", "==", user.ward)), (snapshot) => {
+      setOpenComplaints(snapshot.docs.filter(d => isComplaintOpen(d.data())).length);
+    }, (error) => console.log("Error fetching complaints for dashboard", error));
+    return () => unsubscribe();
+  }, [user?.ward]);
+
   const period = PERIODS.find(p => p.id === periodId);
   // Pickups are matched to the ward through their society, so older pickups without a ward field still count
   const wardSocieties = useMemo(() => societies.filter(s => s.ward && s.ward === user?.ward), [societies, user?.ward]);
@@ -123,12 +134,13 @@ const WardDashboardScreen = ({ navigation }) => {
   const unassignedSocieties = societies.filter(s => !s.ward).length;
 
   const report = useMemo(() => buildWardReport(wardPickups, wardSocieties, period.days), [wardPickups, wardSocieties, period.days]);
+  const vendorStats = useMemo(() => buildVendorStats(wardPickups, period.days), [wardPickups, period.days]);
   // Month names are localized when the trend is built, so rebuild on language change
   const trend = useMemo(() => buildMonthlyTrend(wardPickups), [wardPickups, language]);
   const wardName = getWardLabel(user?.ward);
 
   const exportCsv = async () => {
-    const csv = buildWardCsv(report, periodLabel(period), wardName);
+    const csv = buildWardCsv(report, periodLabel(period), wardName, vendorStats);
     const fileName = `plastictrack-ward-report-${toDateString(new Date())}.csv`;
     try {
       if (Platform.OS === 'web') {
@@ -152,6 +164,7 @@ const WardDashboardScreen = ({ navigation }) => {
   const maxMaterialKg = report.materials.length ? report.materials[0].kg : 0;
   const maxGradeCount = Math.max(...GRADES.map(g => report.gradeCounts[g.id]), 0);
   const attentionItems = [
+    openComplaints > 0 && { icon: 'alert-octagon', color: colors.error, text: t('dashboard.attentionComplaints', { count: openComplaints }), onPress: () => navigation.navigate('Complaints') },
     report.overdueSocieties > 0 && { icon: 'alert-circle', color: colors.error, text: t('dashboard.attentionOverdue', { count: report.overdueSocieties }) },
     report.awaitingVerification > 0 && { icon: 'shield-alert', color: colors.warning, text: t('dashboard.attentionAwaiting', { count: report.awaitingVerification }), onPress: () => navigation.navigate('Verify') },
     report.noPickupScheduled > 0 && { icon: 'calendar-remove', color: colors.textSecondary, text: t('dashboard.attentionNoPickup', { count: report.noPickupScheduled }) },
@@ -282,6 +295,41 @@ const WardDashboardScreen = ({ navigation }) => {
                   />
                 );
               })}
+            </Card>
+
+            <Card>
+              <Text style={styles.cardTitle}>{t('dashboard.vendorPerformance')}</Text>
+              <Text style={styles.cardSubtitle}>
+                {t('dashboard.vendorSubtitle', { onTime: Math.round(VENDOR_ON_TIME_TARGET * 100), sentBack: Math.round(VENDOR_SENT_BACK_LIMIT * 100) })}
+              </Text>
+              {vendorStats.length === 0 ? (
+                <Text style={styles.emptyText}>{t('dashboard.noVendors')}</Text>
+              ) : (
+                vendorStats.map(v => (
+                  <View key={v.vendorUid} style={styles.societyRow}>
+                    <View style={styles.societyHeader}>
+                      <Text style={styles.societyName} numberOfLines={1}>{v.vendorName}</Text>
+                      <View style={styles.statusChip}>
+                        <MaterialCommunityIcons
+                          name={v.needsReview ? 'alert-circle' : 'check-circle'}
+                          size={14}
+                          color={v.needsReview ? colors.error : colors.success}
+                        />
+                        <Text style={styles.statusText}>{v.needsReview ? t('dashboard.needsReview') : t('dashboard.onTrack')}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.societyDetail}>
+                      {t('dashboard.collectionCount', { count: v.collected })} • {t('dashboard.onTime', { share: formatPercent(v.onTimeShare) })} • {t('dashboard.sentBack', { share: formatPercent(v.sentBackShare) })}
+                    </Text>
+                    <Text style={styles.societyDetail}>
+                      {formatKg(v.totalKg)}{v.gradeAShare !== null ? ` • ${t('dashboard.gradeAShare', { share: formatPercent(v.gradeAShare) })}` : ''}
+                    </Text>
+                    {v.overdueNow > 0 && (
+                      <Text style={[styles.societyDetail, { color: colors.error }]}>{t('dashboard.vendorOverdue', { count: v.overdueNow })}</Text>
+                    )}
+                  </View>
+                ))
+              )}
             </Card>
 
             <Card>

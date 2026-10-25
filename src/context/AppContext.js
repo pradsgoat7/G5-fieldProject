@@ -17,7 +17,6 @@ export const AppProvider = ({ children }) => {
     { id: '3', title: 'Use a Reusable Bottle', category: 'Daily', desc: 'Switching to a reusable water bottle can save hundreds of plastic bottles a year.' },
     { id: '4', title: 'Buy in Bulk', category: 'Shopping', desc: 'Buying items in bulk reduces packaging waste. Store them in glass or reusable containers.' }
   ]);
-  const [challengeJoined, setChallengeJoined] = useState(false); // mock for now
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -212,15 +211,10 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const toggleChallenge = () => {
-    setChallengeJoined(!challengeJoined);
-  };
-
   return (
     <AppContext.Provider value={{
       isLoading, isAuthenticated, user,
       registerAdmin, registerMember, registerStaff, loginByCredentials, logout, setMyWard,
-      challengeJoined, toggleChallenge,
       helpfulTips, setHelpfulTips
     }}>
       {children}

@@ -70,6 +70,8 @@ const PickupReviewScreen = ({ route, navigation }) => {
     await run(async () => {
       await updateDoc(doc(db, "pickups", pickupId), {
         status: PICKUP_STATUS.SCHEDULED,
+        // Counted for vendor performance; lastRejection only keeps the latest one
+        rejectionCount: increment(1),
         lastRejection: {
           by: user.role,
           byName: user.name,

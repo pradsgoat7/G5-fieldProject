@@ -127,12 +127,61 @@ export const buildMonthlyTrend = (pickups, months = 6, now = new Date()) => {
   return buckets;
 };
 
+// Below these a vendor is flagged for the ward officer to review
+export const VENDOR_ON_TIME_TARGET = 0.8;
+export const VENDOR_SENT_BACK_LIMIT = 0.2;
+
+const timesSentBack = (p) => p.rejectionCount || (p.lastRejection ? 1 : 0);
+
+// Per-vendor reliability over the period, from pickups in the ward's societies
+export const buildVendorStats = (pickups, periodDays, now = Date.now()) => {
+  const periodStart = periodDays ? toDateString(new Date(now - periodDays * DAY_MS)) : '';
+  const today = toDateString(new Date(now));
+  const byVendor = {};
+
+  pickups
+    .filter(p => p.vendorUid && p.status !== PICKUP_STATUS.CANCELLED && (p.scheduledDate || '') >= periodStart)
+    .forEach(p => {
+      const v = byVendor[p.vendorUid] = byVendor[p.vendorUid] || {
+        vendorUid: p.vendorUid, vendorName: p.vendorName || p.vendor, assigned: 0, collected: 0, onTime: 0,
+        weighedOnce: 0, sentBack: 0, overdueNow: 0, gradeA: 0, totalKg: 0
+      };
+      v.assigned += 1;
+      if (p.weighedAt || timesSentBack(p) > 0) v.weighedOnce += 1;
+      if (timesSentBack(p) > 0) v.sentBack += 1;
+      if (p.status === PICKUP_STATUS.SCHEDULED && p.scheduledDate < today) v.overdueNow += 1;
+      if (isBmcVerified(p)) {
+        v.collected += 1;
+        v.totalKg += p.totalKg || sumKg(p.items);
+        if (p.grade === 'A') v.gradeA += 1;
+        // Weighed on or before the scheduled day; a re-weigh after a send-back counts on its final date
+        if (p.weighedAt && toDateString(new Date(toMillis(p.weighedAt))) <= p.scheduledDate) v.onTime += 1;
+      }
+    });
+
+  return Object.values(byVendor).map(v => {
+    const onTimeShare = v.collected ? v.onTime / v.collected : null;
+    const sentBackShare = v.weighedOnce ? v.sentBack / v.weighedOnce : null;
+    return {
+      ...v,
+      onTimeShare,
+      sentBackShare,
+      gradeAShare: v.collected ? v.gradeA / v.collected : null,
+      needsReview: v.overdueNow > 0
+        || (onTimeShare !== null && onTimeShare < VENDOR_ON_TIME_TARGET)
+        || (sentBackShare !== null && sentBackShare > VENDOR_SENT_BACK_LIMIT)
+    };
+  }).sort((a, b) => b.needsReview - a.needsReview || b.collected - a.collected);
+};
+
 const csvCell = (value) => {
   const text = value === null || value === undefined ? '' : String(value);
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
-export const buildWardCsv = (report, periodLabel, wardName) => {
+const percentCell = (share) => (share === null ? '' : Math.round(share * 100));
+
+export const buildWardCsv = (report, periodLabel, wardName, vendors = []) => {
   const rows = [
     [t('csv.title')],
     [t('csv.ward'), wardName],
@@ -152,6 +201,13 @@ export const buildWardCsv = (report, periodLabel, wardName) => {
       r.societyName, r.societyCode, r.members, societyStatusLabel(r.status), r.collections, r.totalKg.toFixed(2),
       r.recyclableKg.toFixed(2), r.nonRecyclableKg.toFixed(2), r.kgPerMember.toFixed(2),
       r.gradeAShare === null ? '' : Math.round(r.gradeAShare * 100), r.lastVerified || '', r.nextPickup || ''
+    ]),
+    [],
+    [t('csv.vendor'), t('csv.assigned'), t('csv.verifiedCollections'), t('csv.onTimePercent'), t('csv.sentBackPercent'),
+      t('csv.overdueNow'), t('csv.gradeAPercent'), t('csv.total'), t('csv.needsReview')],
+    ...vendors.map(v => [
+      v.vendorName, v.assigned, v.collected, percentCell(v.onTimeShare), percentCell(v.sentBackShare),
+      v.overdueNow, percentCell(v.gradeAShare), v.totalKg.toFixed(2), v.needsReview ? t('common.yes') : ''
     ])
   ];
   return rows.map(row => row.map(csvCell).join(',')).join('\n');

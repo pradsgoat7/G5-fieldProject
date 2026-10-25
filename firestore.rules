@@ -114,6 +114,37 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/pickups/$(pickupId)).data.status == 'Scheduled';
     }
 
+    // Weekly challenge: one document per member per week, id "<weekId>_<uid>"
+    match /challenge_joins/{joinId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && joinId == request.resource.data.weekId + '_' + request.auth.uid
+        && inMySociety(request.resource.data.societyCode);
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Citizen complaints go to the BMC official of the chosen ward
+    match /complaints/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.status == 'Open'
+        && validWard(request.resource.data.ward);
+      allow update: if hasRole('bmc_official')
+        && resource.data.ward == me().ward
+        && resource.data.status in ['Open', 'InProgress']
+        && request.resource.data.status in ['InProgress', 'Resolved', 'Rejected']
+        && unchanged(['reporterUid', 'ward', 'category', 'description', 'location', 'createdAt', 'societyCode']);
+    }
+
+    // Written in the same batch as the complaint, so check the complaint as it will be after the batch
+    match /complaint_photos/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && getAfter(/databases/$(database)/documents/complaints/$(id)).data.reporterUid == request.auth.uid;
+    }
+
     match /exchange_submissions/{id} {
       allow read: if signedIn();
       allow create: if inMySociety(request.resource.data.societyCode);
