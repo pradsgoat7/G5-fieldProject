@@ -10,18 +10,20 @@ import Button from '../components/Button';
 import { StatusBadge } from '../components/PickupDetails';
 import { showMessage, askConfirm } from '../services/dialogs';
 import {
-  PICKUP_STATUS, PICKUP_INTERVAL_DAYS, toDateString, addDays, daysUntil, describeCountdown, formatDate
+  PICKUP_STATUS, PICKUP_INTERVAL_DAYS, TIME_SLOTS, toDateString, addDays, daysUntil, describeCountdown, formatDate,
+  timeSlotLabel, translatePlasticList
 } from '../services/pickupService';
+import { useTranslation } from '../i18n';
 
-const TIME_SLOTS = ['Morning (8am-12pm)', 'Afternoon (12pm-4pm)', 'Evening (4pm-7pm)'];
 const ACTIVE_STATUSES = [PICKUP_STATUS.SCHEDULED, PICKUP_STATUS.WEIGHED, PICKUP_STATUS.VERIFIED];
 
 const VendorsScreen = ({ navigation }) => {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [vendors, setVendors] = useState([]);
   const [vendorUid, setVendorUid] = useState(null);
   const [pickupDate, setPickupDate] = useState(toDateString(new Date()));
-  const [timeSlot, setTimeSlot] = useState(TIME_SLOTS[0]);
+  const [timeSlot, setTimeSlot] = useState(TIME_SLOTS[0].value);
   const [instructions, setInstructions] = useState('');
   const [societyPickups, setSocietyPickups] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,7 +65,7 @@ const VendorsScreen = ({ navigation }) => {
   const schedulePickup = async () => {
     const vendor = vendors.find(v => v.uid === vendorUid);
     if (!vendor) {
-      return showMessage('No vendor selected', 'Select a registered vendor for the collection.');
+      return showMessage(t('vendors.noVendorTitle'), t('vendors.noVendor'));
     }
     setIsScheduling(true);
     try {
@@ -87,29 +89,29 @@ const VendorsScreen = ({ navigation }) => {
       await addDoc(collection(db, "announcements"), {
         societyCode: user.societyCode,
         type: 'activity',
-        title: 'Pickup Scheduled',
-        description: `Collection by ${vendorName} on ${formatDate(pickupDate)}`,
+        title: t('vendors.announcementTitle'),
+        description: t('vendors.announcement', { vendor: vendorName, date: formatDate(pickupDate) }),
         timestamp: Date.now()
       });
 
-      showMessage('Pickup Scheduled!', 'Points are credited after the vendor weighs it, a BMC official verifies it and you confirm.');
+      showMessage(t('vendors.scheduledTitle'), t('vendors.scheduled'));
       setInstructions('');
     } catch (e) {
       console.error(e);
-      showMessage('Error', 'Could not schedule pickup. Check your connection.');
+      showMessage(t('common.error'), t('common.connectionError'));
     } finally {
       setIsScheduling(false);
     }
   };
 
   const cancelPickup = async (p) => {
-    const ok = await askConfirm('Cancel pickup?', `Cancel the collection on ${formatDate(p.scheduledDate || p.date)}?`, 'Cancel Pickup');
+    const ok = await askConfirm(t('vendors.cancelTitle'), t('vendors.cancelMessage', { date: formatDate(p.scheduledDate || p.date) }), t('vendors.cancelPickup'));
     if (!ok) return;
     try {
       await updateDoc(doc(db, "pickups", p.id), { status: PICKUP_STATUS.CANCELLED });
     } catch (e) {
       console.error(e);
-      showMessage('Error', 'Could not cancel pickup.');
+      showMessage(t('common.error'), t('vendors.cancelError'));
     }
   };
 
@@ -118,30 +120,30 @@ const VendorsScreen = ({ navigation }) => {
     return (
       <Card style={styles.formCard}>
         <View style={styles.pickupHeader}>
-          <Text style={styles.vendorName}>Next Collection</Text>
+          <Text style={styles.vendorName}>{t('vendors.nextCollection')}</Text>
           <StatusBadge status={p.status} />
         </View>
-        <Text style={styles.pickupDetail}>Vendor: {p.vendorName}</Text>
-        <Text style={styles.pickupDetail}>Date: {formatDate(p.scheduledDate)} • {p.timeSlot}</Text>
+        <Text style={styles.pickupDetail}>{t('official.vendor', { name: p.vendorName })}</Text>
+        <Text style={styles.pickupDetail}>{t('vendors.date', { date: formatDate(p.scheduledDate) })} • {timeSlotLabel(p.timeSlot)}</Text>
         {p.status === PICKUP_STATUS.SCHEDULED && (
           <Text style={[styles.countdown, days < 0 && { color: colors.error }]}>{describeCountdown(p.scheduledDate)}</Text>
         )}
         {p.status === PICKUP_STATUS.SCHEDULED && p.lastRejection && (
-          <Text style={styles.rejection}>Sent back by {p.lastRejection.byName}: {p.lastRejection.reason}</Text>
+          <Text style={styles.rejection}>{t('vendors.sentBack', { name: p.lastRejection.byName, reason: p.lastRejection.reason })}</Text>
         )}
         {p.status === PICKUP_STATUS.WEIGHED && (
-          <Text style={styles.pickupDetail}>Weighed: {(p.totalKg || 0).toFixed(2)} kg. Waiting for the BMC official to verify.</Text>
+          <Text style={styles.pickupDetail}>{t('vendors.weighedWaiting', { kg: (p.totalKg || 0).toFixed(2) })}</Text>
         )}
         {p.status === PICKUP_STATUS.VERIFIED && (
-          <Text style={styles.pickupDetail}>Verified by {p.verifiedByName} (BMC). Please review and confirm.</Text>
+          <Text style={styles.pickupDetail}>{t('vendors.verifiedReview', { name: p.verifiedByName })}</Text>
         )}
 
         {p.status === PICKUP_STATUS.VERIFIED ? (
-          <Button title="Review & Confirm" onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })} style={{ marginTop: 15 }} />
+          <Button title={t('vendors.reviewConfirm')} onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })} style={{ marginTop: 15 }} />
         ) : p.status === PICKUP_STATUS.WEIGHED ? (
-          <Button title="View Details" type="secondary" onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })} style={{ marginTop: 15 }} />
+          <Button title={t('vendors.viewDetails')} type="secondary" onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })} style={{ marginTop: 15 }} />
         ) : (
-          <Button title="Cancel Pickup" type="secondary" onPress={() => cancelPickup(p)} style={{ marginTop: 15 }} />
+          <Button title={t('vendors.cancelPickup')} type="secondary" onPress={() => cancelPickup(p)} style={{ marginTop: 15 }} />
         )}
       </Card>
     );
@@ -149,9 +151,9 @@ const VendorsScreen = ({ navigation }) => {
 
   const renderScheduleForm = () => (
     <Card style={styles.formCard}>
-      <Text style={styles.label}>Select Vendor</Text>
+      <Text style={styles.label}>{t('vendors.selectVendor')}</Text>
       {vendors.length === 0 ? (
-        <Text style={styles.pickupDetail}>No vendors have registered yet. Vendors sign up with the vendor invite code.</Text>
+        <Text style={styles.pickupDetail}>{t('vendors.noVendorsRegistered')}</Text>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
           {vendors.map(v => (
@@ -168,7 +170,7 @@ const VendorsScreen = ({ navigation }) => {
         </ScrollView>
       )}
 
-      <Text style={styles.label}>Pickup Date</Text>
+      <Text style={styles.label}>{t('vendors.pickupDate')}</Text>
       <View style={styles.dateRow}>
         <TouchableOpacity onPress={() => shiftDate(-1)} style={styles.dateButton}>
           <MaterialCommunityIcons name="chevron-left" size={24} color={colors.primary} />
@@ -179,35 +181,35 @@ const VendorsScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.label}>Preferred Time Slot</Text>
+      <Text style={styles.label}>{t('vendors.timeSlot')}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-        {TIME_SLOTS.map(t => (
+        {TIME_SLOTS.map(slot => (
           <TouchableOpacity
-            key={t}
-            style={[styles.pill, timeSlot === t && styles.pillSelected]}
-            onPress={() => setTimeSlot(t)}
+            key={slot.id}
+            style={[styles.pill, timeSlot === slot.value && styles.pillSelected]}
+            onPress={() => setTimeSlot(slot.value)}
           >
-            <Text style={[styles.pillText, timeSlot === t && styles.pillTextSelected]}>{t}</Text>
+            <Text style={[styles.pillText, timeSlot === slot.value && styles.pillTextSelected]}>{timeSlotLabel(slot.value)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      <Text style={styles.label}>Society Address</Text>
+      <Text style={styles.label}>{t('vendors.address')}</Text>
       <View style={styles.readOnlyInput}>
         <Text style={styles.readOnlyText}>{user?.societyName}</Text>
       </View>
 
-      <Text style={styles.label}>Special Instructions</Text>
+      <Text style={styles.label}>{t('vendors.instructions')}</Text>
       <TextInput
         style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
         multiline
-        placeholder="Collection point, gate number, etc."
+        placeholder={t('vendors.instructionsPlaceholder')}
         value={instructions}
         onChangeText={setInstructions}
       />
 
       <Button
-        title={isScheduling ? 'Scheduling...' : 'Schedule Pickup'}
+        title={isScheduling ? t('vendors.scheduling') : t('vendors.schedule')}
         onPress={schedulePickup}
         disabled={isScheduling || vendors.length === 0}
         style={{ marginTop: 15 }}
@@ -219,21 +221,21 @@ const VendorsScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="truck-delivery" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Vendor Pickups</Text>
+        <Text style={styles.headerTitle}>{t('vendors.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.subtitle}>
-          Collections happen every {PICKUP_INTERVAL_DAYS} days. The vendor weighs your plastic, a BMC official verifies it, and you confirm before points are credited.
+          {t('vendors.intro', { days: PICKUP_INTERVAL_DAYS })}
         </Text>
 
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary} />
         ) : activePickup ? renderActivePickup(activePickup) : renderScheduleForm()}
 
-        <Text style={styles.sectionTitle}>Past Pickups</Text>
+        <Text style={styles.sectionTitle}>{t('vendors.pastPickups')}</Text>
         {!isLoading && pastPickups.length === 0 ? (
-          <Text style={styles.emptyText}>No past pickups yet.</Text>
+          <Text style={styles.emptyText}>{t('vendors.noPastPickups')}</Text>
         ) : (
           pastPickups.map(p => (
             <Card key={p.id}>
@@ -241,16 +243,16 @@ const VendorsScreen = ({ navigation }) => {
                   <Text style={styles.vendorName}>{p.vendorName || p.vendor}</Text>
                   <StatusBadge status={p.status} />
                 </View>
-                <Text style={styles.pickupDetail}>Date: {formatDate(p.scheduledDate || p.date)}</Text>
-                {p.kg ? <Text style={styles.pickupDetail}>Items: {Number(p.kg).toFixed(2)} kg of {p.type}</Text> : null}
-                {p.pointsAwarded != null && <Text style={styles.points}>+{p.pointsAwarded} points</Text>}
+                <Text style={styles.pickupDetail}>{t('vendors.date', { date: formatDate(p.scheduledDate || p.date) })}</Text>
+                {p.kg ? <Text style={styles.pickupDetail}>{t('vendors.items', { kg: Number(p.kg).toFixed(2), types: translatePlasticList(p.type) })}</Text> : null}
+                {p.pointsAwarded != null && <Text style={styles.points}>{t('vendors.pointsAwarded', { points: p.pointsAwarded })}</Text>}
                 {p.items && (
                   <TouchableOpacity onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })}>
-                    <Text style={styles.detailsLink}>View weights, photo & sign-off →</Text>
+                    <Text style={styles.detailsLink}>{t('vendors.viewProof')}</Text>
                   </TouchableOpacity>
                 )}
                 {p.status === PICKUP_STATUS.SCHEDULED && (
-                  <Button title="Cancel" type="secondary" onPress={() => cancelPickup(p)} style={{ marginTop: 10, paddingVertical: 8 }} />
+                  <Button title={t('common.cancel')} type="secondary" onPress={() => cancelPickup(p)} style={{ marginTop: 10, paddingVertical: 8 }} />
                 )}
               </Card>
           ))

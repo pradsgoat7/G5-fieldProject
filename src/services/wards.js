@@ -1,3 +1,5 @@
+import { translate } from '../i18n';
+
 // BMC's 24 administrative wards (A to T). Update here if BMC splits or renames a ward.
 export const BMC_WARDS = [
   { id: 'A', areas: 'Colaba, Fort, Churchgate' },
@@ -26,4 +28,4 @@ export const BMC_WARDS = [
   { id: 'T', areas: 'Mulund' }
 ];
 
-export const getWardLabel = (id) => (id ? `${id} Ward` : 'Ward not set');
+export const getWardLabel = (id) => (id ? translate('ward.label', { id }) : translate('ward.notSet'));

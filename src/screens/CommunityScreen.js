@@ -7,16 +7,12 @@ import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { AppContext } from '../context/AppContext';
+import { useTranslation, getLocale } from '../i18n';
 
 const { width } = Dimensions.get('window');
 
-const TIPS = [
-  { id: '1', text: 'Carry a reusable bag 🛍️' },
-  { id: '2', text: 'Refuse plastic straws 🥤' },
-  { id: '3', text: 'Buy in bulk to reduce packaging 📦' },
-  { id: '4', text: 'Choose glass or metal containers 🫙' },
-  { id: '5', text: 'Opt for bar soap over plastic bottles 🧼' },
-];
+// Tip text lives in the translation files under community.tips
+const TIP_IDS = ['bag', 'straws', 'bulk', 'containers', 'soap'];
 
 
 
@@ -28,6 +24,7 @@ const POSTS = [
 
 const CommunityScreen = () => {
   const { challengeJoined, toggleChallenge, user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [announcement, setAnnouncement] = useState('');
   const [localPosts, setLocalPosts] = useState([]);
   
@@ -108,7 +105,7 @@ const CommunityScreen = () => {
         await addDoc(collection(db, "announcements"), {
           societyCode: user.societyCode,
           type: 'announcement',
-          title: 'Admin Post',
+          title: t('community.adminPost'),
           description: announcement,
           user: user.name + ' (Admin)',
           timestamp: Date.now(),
@@ -130,58 +127,58 @@ const CommunityScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="account-group" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Community Hub</Text>
+        <Text style={styles.headerTitle}>{t('community.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Card style={styles.challengeCard}>
-          <Text style={styles.challengeBadge}>🌟 Weekly Challenge</Text>
-          <Text style={styles.challengeText}>Go bag-free for 7 days 🛍️</Text>
-          <Text style={styles.progressLabel}>Society Participation: 67%</Text>
+          <Text style={styles.challengeBadge}>{t('community.weeklyChallenge')}</Text>
+          <Text style={styles.challengeText}>{t('community.challengeText')}</Text>
+          <Text style={styles.progressLabel}>{t('community.participation', { percent: 67 })}</Text>
           <View style={styles.progressBarBg}>
             <View style={[styles.progressBarFill, { width: '67%' }]} />
           </View>
           <Button 
-            title={challengeJoined ? "Challenge Joined!" : "Join Challenge"} 
+            title={challengeJoined ? t('community.joined') : t('community.join')} 
             type={challengeJoined ? "secondary" : "primary"}
             onPress={handleJoin}
             style={styles.joinButton} 
           />
         </Card>
 
-        <Text style={styles.sectionTitle}>Plastic Reduction Tips</Text>
+        <Text style={styles.sectionTitle}>{t('community.tipsTitle')}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tipsScroll}>
-          {TIPS.map(tip => (
-            <Card key={tip.id} style={styles.tipCard}>
-              <Text style={styles.tipText}>{tip.text}</Text>
+          {TIP_IDS.map(id => (
+            <Card key={id} style={styles.tipCard}>
+              <Text style={styles.tipText}>{t(`community.tips.${id}`)}</Text>
             </Card>
           ))}
         </ScrollView>
 
-        <Text style={styles.sectionTitle}>Awareness Stats</Text>
+        <Text style={styles.sectionTitle}>{t('community.statsTitle')}</Text>
         <Card style={styles.statsCard}>
           <View style={styles.statRow}>
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color={colors.warning} />
-            <Text style={styles.statText}>Plastic takes 400–1000 years to decompose.</Text>
+            <Text style={styles.statText}>{t('community.stat1')}</Text>
           </View>
           <View style={styles.statRow}>
             <MaterialCommunityIcons name="recycle" size={20} color={colors.primary} />
-            <Text style={styles.statText}>Only 9% of plastic ever produced has been recycled.</Text>
+            <Text style={styles.statText}>{t('community.stat2')}</Text>
           </View>
           <View style={styles.statRow}>
             <MaterialCommunityIcons name="earth" size={20} color={colors.secondary} />
-            <Text style={styles.statText}>India generates 3.5 million tonnes of plastic waste annually.</Text>
+            <Text style={styles.statText}>{t('community.stat3')}</Text>
           </View>
         </Card>
 
-        <Text style={styles.sectionTitle}>Society Leaderboard</Text>
+        <Text style={styles.sectionTitle}>{t('community.leaderboard')}</Text>
         <Card style={styles.leaderboardCard}>
           {isComputingLB ? (
             <View style={{ padding: 30, alignItems: 'center' }}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : lbItems.length === 0 ? (
-            <Text style={{ padding: 20, textAlign: 'center', color: colors.textSecondary }}>No societies available.</Text>
+            <Text style={{ padding: 20, textAlign: 'center', color: colors.textSecondary }}>{t('community.noSocieties')}</Text>
           ) : (
             lbItems.map((item, index) => {
               const isMySociety = item.societyCode === user?.societyCode;
@@ -199,7 +196,7 @@ const CommunityScreen = () => {
               }
 
               let gradeIcon = '⚪';
-              let gradeText = 'Eval';
+              let gradeText = t('community.eval');
               if (!item.isEvaluating) {
                 gradeText = item.grade;
                 if (item.grade === 'A') gradeIcon = '🟢';
@@ -210,7 +207,7 @@ const CommunityScreen = () => {
 
               return (
                 <View key={item.societyCode} style={[styles.lbNewRow, isMySociety && styles.mySocietyHighlight]}>
-                  {isMySociety && <Text style={styles.mySocietyBadge}>Your Society</Text>}
+                  {isMySociety && <Text style={styles.mySocietyBadge}>{t('community.yourSociety')}</Text>}
                   
                   {!item.isEvaluating ? (
                     <>
@@ -218,20 +215,20 @@ const CommunityScreen = () => {
                         <Text style={styles.lbNewRank}>{medal ? medal : `#${item.rank}`}  {item.societyName}</Text>
                         <Text style={[styles.lbNewGrade, item.grade === 'D' && { backgroundColor: '#333', color: '#FFF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }]}>[{gradeText}] {gradeIcon}</Text>
                       </View>
-                      <Text style={styles.lbNewScore}>Score: {item.normalizedScore.toFixed(1)} pts/household/week</Text>
-                      {item.grade === 'D' && <Text style={{ fontSize: 12, color: '#D32F2F', fontStyle: 'italic', marginBottom: 4 }}>Submitting too much non-recyclable plastic.</Text>}
-                      <Text style={styles.lbNewSub}>Members: {item.membersCount} | Active: {item.weeksActive} weeks</Text>
-                      <Text style={styles.lbNewSub}>Total Points: {item.totalPointsEarned}</Text>
-                      {item.totalPointsEarned === 0 && <Text style={[styles.lbNewSub, { fontStyle: 'italic', color: '#999' }]}>No submissions yet</Text>}
+                      <Text style={styles.lbNewScore}>{t('community.score', { value: item.normalizedScore.toFixed(1) })}</Text>
+                      {item.grade === 'D' && <Text style={{ fontSize: 12, color: '#D32F2F', fontStyle: 'italic', marginBottom: 4 }}>{t('home.tooMuchNonRecyclable')}</Text>}
+                      <Text style={styles.lbNewSub}>{t('community.membersWeeks', { members: item.membersCount, count: item.weeksActive })}</Text>
+                      <Text style={styles.lbNewSub}>{t('community.totalPoints', { points: item.totalPointsEarned })}</Text>
+                      {item.totalPointsEarned === 0 && <Text style={[styles.lbNewSub, { fontStyle: 'italic', color: '#999' }]}>{t('community.noSubmissions')}</Text>}
                     </>
                   ) : (
                     <View style={styles.evalCard}>
                       <View style={styles.lbNewHeader}>
                         <Text style={[styles.lbNewRank, { color: '#666' }]}>🕐  {item.societyName}</Text>
-                        <Text style={styles.lbNewGrade}>[Eval] ⚪</Text>
+                        <Text style={styles.lbNewGrade}>[{t('community.eval')}] ⚪</Text>
                       </View>
-                      <Text style={[styles.lbNewScore, { color: '#888', fontSize: 13 }]}>Ranking begins after 2 weeks</Text>
-                      <Text style={[styles.lbNewSub, { color: '#888' }]}>Members: {item.membersCount} | Active: {item.daysSinceRegistration} days</Text>
+                      <Text style={[styles.lbNewScore, { color: '#888', fontSize: 13 }]}>{t('home.rankingBegins')}</Text>
+                      <Text style={[styles.lbNewSub, { color: '#888' }]}>{t('community.membersDays', { members: item.membersCount, count: item.daysSinceRegistration })}</Text>
                     </View>
                   )}
                 </View>
@@ -240,23 +237,23 @@ const CommunityScreen = () => {
           )}
           {!isComputingLB && lbItems.length > 0 && !lbItems.some(s => !s.isEvaluating) && (
             <Text style={{ padding: 15, textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
-              No societies ranked yet. Rankings appear after 2 weeks of activity.
+              {t('community.noneRanked')}
             </Text>
           )}
         </Card>
 
-        <Text style={styles.sectionTitle}>Community Posts</Text>
+        <Text style={styles.sectionTitle}>{t('community.posts')}</Text>
         
         {user?.role === 'admin' && (
            <Card style={{ marginBottom: 15 }}>
              <TextInput 
                 style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
                 multiline 
-                placeholder="Post an announcement to your society..." 
+                placeholder={t('community.postPlaceholder')} 
                 value={announcement} 
                 onChangeText={setAnnouncement} 
               />
-             <Button title="Post Announcement" onPress={postAnnouncement} />
+             <Button title={t('community.postButton')} onPress={postAnnouncement} />
            </Card>
         )}
 
@@ -268,19 +265,19 @@ const CommunityScreen = () => {
               </View>
               <View>
                 <Text style={styles.postUser}>{post.user || post.title}</Text>
-                {post.isAdminAuthored && <Text style={{color: colors.primary, fontSize: 12, fontWeight: 'bold'}}>📢 Admin Announcement</Text>}
-                <Text style={styles.postTime}>{post.time || (post.timestamp ? new Date(post.timestamp).toLocaleString() : 'Just now')}</Text>
+                {post.isAdminAuthored && <Text style={{color: colors.primary, fontSize: 12, fontWeight: 'bold'}}>{t('community.adminAnnouncement')}</Text>}
+                <Text style={styles.postTime}>{post.time || (post.timestamp ? new Date(post.timestamp).toLocaleString(getLocale()) : t('common.justNow'))}</Text>
               </View>
             </View>
             <Text style={styles.postContent}>{post.content || post.description}</Text>
             <View style={styles.postActions}>
               <TouchableOpacity style={styles.actionBtn}>
                 <MaterialCommunityIcons name="heart-outline" size={20} color={colors.textSecondary} />
-                <Text style={styles.actionText}>Like</Text>
+                <Text style={styles.actionText}>{t('community.like')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionBtn}>
                 <MaterialCommunityIcons name="comment-outline" size={20} color={colors.textSecondary} />
-                <Text style={styles.actionText}>Comment</Text>
+                <Text style={styles.actionText}>{t('community.comment')}</Text>
               </TouchableOpacity>
             </View>
           </Card>

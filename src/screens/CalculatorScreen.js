@@ -7,9 +7,11 @@ import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'f
 import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { BarChart } from 'react-native-chart-kit';
+import { useTranslation, getLocale, translateRating } from '../i18n';
 
 export default function CalculatorScreen({ navigation }) {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [bottles, setBottles] = useState('0');
   const [bags, setBags] = useState('0');
   const [packaging, setPackaging] = useState('0');
@@ -156,7 +158,7 @@ export default function CalculatorScreen({ navigation }) {
         year: new Date().getFullYear()
       });
       
-      Alert.alert("Success", "Saved successfully! ✅");
+      Alert.alert(t('calculator.successTitle'), t('calculator.saved'));
       
       setBottles('0');
       setBags('0');
@@ -167,34 +169,34 @@ export default function CalculatorScreen({ navigation }) {
       setResult(null);
     } catch(e) {
       console.log("Save error:", e);
-      Alert.alert("Error", "Could not save entry.");
+      Alert.alert(t('common.error'), t('calculator.saveError'));
     }
   };
 
   const chartData = {
-    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+    labels: [1, 2, 3, 4].map(n => t('calculator.week', { n })),
     datasets: [{ data: weeklyData }]
   };
 
   const last = weeklyData[3];
   const prev = weeklyData[2];
   const insight = last < prev && prev > 0
-    ? "📉 Great job! Your usage is decreasing."
+    ? t('calculator.insightDown')
     : last > prev
-    ? "📈 Your usage increased this week. Try to reduce!"
-    : "➡️ Your usage has been consistent.";
+    ? t('calculator.insightUp')
+    : t('calculator.insightSame');
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Footprint Calculator</Text>
+      <Text style={styles.title}>{t('calculator.title')}</Text>
       
       {[
-        { label: 'Plastic Bottles', value: bottles, set: setBottles, ind: '♻️ Recyclable', color: '#2E7D32' },
-        { label: 'Plastic Bags', value: bags, set: setBags, ind: '🚫 Non-Recyclable', color: '#C62828' },
-        { label: 'Food Packaging', value: packaging, set: setPackaging, ind: '🚫 Non-Recyclable', color: '#C62828' },
-        { label: 'Straws', value: straws, set: setStraws, ind: '🚫 Non-Recyclable', color: '#C62828' },
-        { label: 'Disposable Cups', value: cups, set: setCups, ind: '🚫 Non-Recyclable', color: '#C62828' },
-        { label: 'Other Items', value: other, set: setOther, ind: null },
+        { label: t('calculator.bottles'), value: bottles, set: setBottles, ind: t('calculator.recyclable'), color: '#2E7D32' },
+        { label: t('calculator.bags'), value: bags, set: setBags, ind: t('calculator.nonRecyclable'), color: '#C62828' },
+        { label: t('calculator.packaging'), value: packaging, set: setPackaging, ind: t('calculator.nonRecyclable'), color: '#C62828' },
+        { label: t('calculator.straws'), value: straws, set: setStraws, ind: t('calculator.nonRecyclable'), color: '#C62828' },
+        { label: t('calculator.cups'), value: cups, set: setCups, ind: t('calculator.nonRecyclable'), color: '#C62828' },
+        { label: t('calculator.other'), value: other, set: setOther, ind: null },
       ].map(item => (
         <View key={item.label} style={styles.row}>
           <View style={{flex: 1}}>
@@ -211,39 +213,39 @@ export default function CalculatorScreen({ navigation }) {
       ))}
 
       <TouchableOpacity style={styles.button} onPress={calculate}>
-        <Text style={styles.buttonText}>Calculate</Text>
+        <Text style={styles.buttonText}>{t('calculator.calculate')}</Text>
       </TouchableOpacity>
 
       {result && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Your Results</Text>
+          <Text style={styles.cardTitle}>{t('calculator.results')}</Text>
           <View style={{borderBottomWidth: 1, borderBottomColor: '#E0E0E0', paddingBottom: 8, marginBottom: 8}}>
-            <Text style={{marginBottom: 4}}>Total this week: {result.total} kg</Text>
-            <Text style={{marginBottom: 4}}>Monthly estimate: {result.monthly} kg</Text>
-            <Text>Yearly estimate: {result.yearly} kg</Text>
+            <Text style={{marginBottom: 4}}>{t('calculator.totalWeek', { kg: result.total })}</Text>
+            <Text style={{marginBottom: 4}}>{t('calculator.monthly', { kg: result.monthly })}</Text>
+            <Text>{t('calculator.yearly', { kg: result.yearly })}</Text>
           </View>
           
           <Text style={{fontStyle: 'italic', color: '#E65100', marginBottom: 8}}>
-            Environmental impact: Equivalent to {result.impact} plastic bags.
+            {t('calculator.impact', { count: result.impact })}
           </Text>
           
           <Text style={{fontWeight: '600'}}>
-            Rating: <Text style={{color: 
+            {t('calculator.rating')} <Text style={{color: 
               result.rating === 'Excellent' ? '#2E7D32' : 
               result.rating === 'Good' ? '#F9A825' : 
               result.rating === 'Moderate' ? '#E65100' : '#C62828'
-            }}>{result.rating}</Text>
+            }}>{translateRating(result.rating)}</Text>
           </Text>
           
           <TouchableOpacity style={[styles.button, {marginTop: 16, marginBottom: 0}]} onPress={saveToDashboard}>
-            <Text style={styles.buttonText}>Save to Dashboard</Text>
+            <Text style={styles.buttonText}>{t('calculator.save')}</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {historyTab === 'personal' && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>📊 4-Week Trend</Text>
+          <Text style={styles.cardTitle}>{t('calculator.trend')}</Text>
           {(() => {
             try {
               return (
@@ -268,7 +270,7 @@ export default function CalculatorScreen({ navigation }) {
                 </View>
               );
             } catch(e) {
-              return <Text style={styles.empty}>Chart unavailable</Text>;
+              return <Text style={styles.empty}>{t('calculator.chartUnavailable')}</Text>;
             }
           })()}
         </View>
@@ -276,14 +278,14 @@ export default function CalculatorScreen({ navigation }) {
 
       <View style={styles.card}>
         <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
-          <Text style={[styles.cardTitle, {marginBottom: 0}]}>History</Text>
+          <Text style={[styles.cardTitle, {marginBottom: 0}]}>{t('calculator.history')}</Text>
           {user?.role === 'admin' && (
             <View style={{flexDirection: 'row'}}>
               <TouchableOpacity onPress={() => setHistoryTab('personal')} style={{paddingHorizontal: 8, paddingVertical: 4, backgroundColor: historyTab === 'personal' ? '#2E7D32' : '#E0E0E0', borderRadius: 4, marginRight: 8}}>
-                <Text style={{color: historyTab === 'personal' ? 'white' : 'black', fontSize: 12}}>Personal</Text>
+                <Text style={{color: historyTab === 'personal' ? 'white' : 'black', fontSize: 12}}>{t('calculator.personal')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setHistoryTab('society')} style={{paddingHorizontal: 8, paddingVertical: 4, backgroundColor: historyTab === 'society' ? '#2E7D32' : '#E0E0E0', borderRadius: 4}}>
-                <Text style={{color: historyTab === 'society' ? 'white' : 'black', fontSize: 12}}>Society</Text>
+                <Text style={{color: historyTab === 'society' ? 'white' : 'black', fontSize: 12}}>{t('calculator.society')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -292,7 +294,7 @@ export default function CalculatorScreen({ navigation }) {
         {loading ? (
           <ActivityIndicator size="small" color="#2E7D32" />
         ) : history.length === 0 ? (
-          <Text style={styles.empty}>No history yet. Save a calculation to see it here.</Text>
+          <Text style={styles.empty}>{t('calculator.noHistory')}</Text>
         ) : (
           history.map(entry => (
             <View key={entry.id} style={{
@@ -308,13 +310,13 @@ export default function CalculatorScreen({ navigation }) {
             }}>
               <Text style={{fontWeight: '600', color: '#1B1B1B'}}>
                 {historyTab === 'society' && entry.userName ? `👤 ${entry.userName} • ` : ''}
-                {entry.jsDate.toLocaleDateString('en-IN', {
+                {entry.jsDate.toLocaleDateString(getLocale(), {
                   day: '2-digit', month: 'short', year: 'numeric'
                 })}
               </Text>
               <Text style={{color: '#5C5C5C', marginTop: 2}}>
                 {entry.totalKg?.toFixed(2) || '0.00'} kg  •  
-                {entry.rating || 'Unknown'}
+                {translateRating(entry.rating)}
               </Text>
             </View>
           ))

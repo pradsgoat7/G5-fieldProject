@@ -4,6 +4,7 @@ import { AppProvider } from './src/context/AppContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import * as storage from './src/services/storageService';
+import { LanguageProvider } from './src/i18n';
 
 export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(null);
@@ -20,10 +21,12 @@ export default function App() {
   if (showOnboarding === null) return null; 
 
   return (
-    <AppProvider>
-      <NavigationContainer>
-        {showOnboarding ? <OnboardingScreen onComplete={() => setShowOnboarding(false)} /> : <AppNavigator />}
-      </NavigationContainer>
-    </AppProvider>
+    <LanguageProvider>
+      <AppProvider>
+        <NavigationContainer>
+          {showOnboarding ? <OnboardingScreen onComplete={() => setShowOnboarding(false)} /> : <AppNavigator />}
+        </NavigationContainer>
+      </AppProvider>
+    </LanguageProvider>
   );
 }

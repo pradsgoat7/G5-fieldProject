@@ -7,11 +7,13 @@ import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import {
-  GRADES, IMPACT_FACTOR, RECYCLABLE_MF, NON_RECYCLABLE_MF, PICKUP_INTERVAL_DAYS
+  GRADES, IMPACT_FACTOR, RECYCLABLE_MF, NON_RECYCLABLE_MF, PICKUP_INTERVAL_DAYS, gradeLabel, translatePlasticList
 } from '../services/pickupService';
+import { useTranslation, getLocale } from '../i18n';
 
 const ExchangeScreen = () => {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [societySubmissions, setSocietySubmissions] = useState([]);
   const [points, setPoints] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,57 +61,60 @@ const ExchangeScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="refresh-circle" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Plastic Exchange</Text>
+        <Text style={styles.headerTitle}>{t('exchange.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.pointsBanner}>
           <MaterialCommunityIcons name="shield-check" size={24} color="#FFF" />
-          <Text style={styles.bannerText}>Points come only from BMC-verified pickups</Text>
+          <Text style={styles.bannerText}>{t('exchange.banner')}</Text>
         </View>
 
         <Card style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Total Points Balance</Text>
+          <Text style={styles.balanceLabel}>{t('exchange.balance')}</Text>
           {isLoading ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <Text style={styles.balanceValue}>{points} pts</Text>
+            <Text style={styles.balanceValue}>{t('common.pts', { value: points })}</Text>
           )}
         </Card>
 
-        <Text style={styles.sectionTitle}>How Points Work</Text>
+        <Text style={styles.sectionTitle}>{t('exchange.howPointsWork')}</Text>
         <Card style={styles.formCard}>
           <Text style={styles.ruleText}>
-            Every {PICKUP_INTERVAL_DAYS} days a vendor weighs your society's plastic, a BMC official verifies it, and you confirm it in the Vendors tab.
+            {t('exchange.howIntro', { days: PICKUP_INTERVAL_DAYS })}
           </Text>
-          <Text style={styles.ruleText}>♻️ Recyclable: {IMPACT_FACTOR * RECYCLABLE_MF} points per kg</Text>
-          <Text style={styles.ruleText}>🚫 Segregated non-recyclable: {IMPACT_FACTOR * NON_RECYCLABLE_MF} points per kg</Text>
-          <Text style={[styles.ruleText, { marginTop: 8, fontWeight: 'bold' }]}>Multiplied by the segregation grade:</Text>
+          <Text style={styles.ruleText}>{t('exchange.recyclableRate', { points: IMPACT_FACTOR * RECYCLABLE_MF })}</Text>
+          <Text style={styles.ruleText}>{t('exchange.nonRecyclableRate', { points: IMPACT_FACTOR * NON_RECYCLABLE_MF })}</Text>
+          <Text style={[styles.ruleText, { marginTop: 8, fontWeight: 'bold' }]}>{t('exchange.gradeMultiplier')}</Text>
           {GRADES.map(g => (
-            <Text key={g.id} style={styles.ruleText}>  {g.label}: ×{g.multiplier}</Text>
+            <Text key={g.id} style={styles.ruleText}>  {gradeLabel(g.id)}: ×{g.multiplier}</Text>
           ))}
         </Card>
 
-        <Text style={styles.sectionTitle}>My Submissions</Text>
+        <Text style={styles.sectionTitle}>{t('exchange.mySubmissions')}</Text>
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary} />
         ) : societySubmissions.length === 0 ? (
-          <Text style={styles.emptyText}>No submissions yet.</Text>
+          <Text style={styles.emptyText}>{t('exchange.noSubmissions')}</Text>
         ) : (
           societySubmissions.map((sub) => {
             const isLegacy = !sub.category;
             const isVerified = sub.source === 'verified_pickup';
             const isRecyclable = sub.category === 'recyclable';
             const bgColors = isLegacy ? '#EEEEEE' : (isRecyclable ? '#E8F5E9' : '#FFF3E0');
-            const titleText = isLegacy ? `🗄️ ${sub.plasticType}` : (isRecyclable ? `♻️ ${sub.plasticType}` : `🚫 ${sub.plasticType}`);
-            const badgeText = isLegacy ? 'Legacy Submission' : isVerified ? 'BMC Verified ✅' : (isRecyclable ? 'Recyclable 🟢' : 'Non-Recyclable 🔴');
+            const plasticText = translatePlasticList(sub.plasticType);
+            const titleText = isLegacy ? `🗄️ ${plasticText}` : (isRecyclable ? `♻️ ${plasticText}` : `🚫 ${plasticText}`);
+            const badgeText = isLegacy ? t('exchange.legacy') : isVerified ? t('exchange.verified') : (isRecyclable ? t('exchange.recyclableBadge') : t('exchange.nonRecyclableBadge'));
             const mfText = isLegacy ? '' : isVerified
-              ? ` (MF: ${sub.multiplyingFactor}x, Grade ${sub.grade})`
-              : ` (MF: ${isRecyclable ? '+1.5' : '-0.5'}x)`;
+              ? t('exchange.mfVerified', { mf: sub.multiplyingFactor, grade: sub.grade })
+              : t('exchange.mfLegacy', { mf: isRecyclable ? '+1.5' : '-0.5' });
             
             const isNegative = sub.pointsEarned < 0;
             const pointsColor = isNegative ? 'red' : colors.success;
-            const pointsText = isLegacy ? `Points earned: +${sub.pointsEarned}` : `Points: ${isNegative ? '' : '+'}${sub.pointsEarned}${mfText}`;
+            const pointsText = isLegacy
+              ? t('exchange.pointsEarned', { points: sub.pointsEarned })
+              : t('exchange.points', { points: `${isNegative ? '' : '+'}${sub.pointsEarned}`, mf: mfText });
 
             return (
               <Card key={sub.id} style={styles.subCard}>
@@ -119,7 +124,7 @@ const ExchangeScreen = () => {
                     <Text style={styles.badgeText}>{badgeText}</Text>
                   </View>
                 </View>
-                <Text style={styles.subDate}>{sub.kg} kg  •  {sub.date?.toDate ? sub.date.toDate().toLocaleDateString() : 'Just now'}</Text>
+                <Text style={styles.subDate}>{sub.kg} kg  •  {sub.date?.toDate ? sub.date.toDate().toLocaleDateString(getLocale()) : t('common.justNow')}</Text>
                 <Text style={[styles.subPointsText, { color: pointsColor }]}>{pointsText}</Text>
               </Card>
             );

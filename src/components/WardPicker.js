@@ -6,8 +6,10 @@ import { colors } from '../theme/colors';
 import Button from './Button';
 import { BMC_WARDS, getWardLabel } from '../services/wards';
 import { showMessage, askConfirm } from '../services/dialogs';
+import { useTranslation } from '../i18n';
 
-const WardPicker = ({ value, onChange, placeholder = 'Select BMC Ward', style }) => {
+const WardPicker = ({ value, onChange, placeholder, style }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const selected = BMC_WARDS.find(w => w.id === value);
 
@@ -15,7 +17,7 @@ const WardPicker = ({ value, onChange, placeholder = 'Select BMC Ward', style })
     <>
       <TouchableOpacity style={[styles.field, style]} onPress={() => setOpen(true)}>
         <Text style={selected ? styles.fieldText : styles.placeholder} numberOfLines={1}>
-          {selected ? `${getWardLabel(selected.id)} – ${selected.areas}` : placeholder}
+          {selected ? `${getWardLabel(selected.id)} – ${selected.areas}` : (placeholder || t('ward.select'))}
         </Text>
         <MaterialCommunityIcons name="chevron-down" size={22} color={colors.textSecondary} />
       </TouchableOpacity>
@@ -24,7 +26,7 @@ const WardPicker = ({ value, onChange, placeholder = 'Select BMC Ward', style })
         <View style={styles.backdrop}>
           <SafeAreaView style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Select BMC Ward</Text>
+              <Text style={styles.sheetTitle}>{t('ward.select')}</Text>
               <TouchableOpacity onPress={() => setOpen(false)} style={{ padding: 4 }}>
                 <MaterialCommunityIcons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
@@ -55,19 +57,20 @@ const WardPicker = ({ value, onChange, placeholder = 'Select BMC Ward', style })
 // Shown to accounts created before wards existed; the ward can only be set once
 export const WardSetupCard = ({ message }) => {
   const { setMyWard } = useContext(AppContext);
+  const { t } = useTranslation();
   const [ward, setWard] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const save = async () => {
-    if (!ward) return showMessage('Select a ward', 'Choose your BMC ward from the list.');
-    const ok = await askConfirm('Set ward?', `Set ${getWardLabel(ward)}? This cannot be changed later.`, 'Set Ward');
+    if (!ward) return showMessage(t('ward.selectWardTitle'), t('ward.selectWardMessage'));
+    const ok = await askConfirm(t('ward.confirmTitle'), t('ward.confirmMessage', { ward: getWardLabel(ward) }), t('ward.confirmButton'));
     if (!ok) return;
     setIsSaving(true);
     try {
       await setMyWard(ward);
     } catch (e) {
       console.error("setMyWard error:", e);
-      showMessage('Error', 'Could not save the ward. Please try again.');
+      showMessage(t('common.error'), t('ward.saveError'));
     } finally {
       setIsSaving(false);
     }
@@ -77,11 +80,11 @@ export const WardSetupCard = ({ message }) => {
     <View style={styles.setupCard}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
         <MaterialCommunityIcons name="map-marker-alert" size={20} color={colors.warning} />
-        <Text style={styles.setupTitle}>Set your BMC ward</Text>
+        <Text style={styles.setupTitle}>{t('ward.setupTitle')}</Text>
       </View>
       <Text style={styles.setupText}>{message}</Text>
       <WardPicker value={ward} onChange={setWard} />
-      <Button title={isSaving ? 'Saving...' : 'Save Ward'} onPress={save} disabled={isSaving} style={{ marginTop: 10, paddingVertical: 10 }} />
+      <Button title={isSaving ? t('common.saving') : t('ward.save')} onPress={save} disabled={isSaving} style={{ marginTop: 10, paddingVertical: 10 }} />
     </View>
   );
 };

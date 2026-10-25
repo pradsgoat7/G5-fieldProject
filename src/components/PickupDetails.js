@@ -5,8 +5,9 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { colors } from '../theme/colors';
 import {
-  STATUS_LABELS, getGrade, sumKg, computeCategoryPoints, computePickupPoints, formatDate, formatTimestamp
+  statusLabel, getGrade, gradeLabel, plasticName, timeSlotLabel, sumKg, computeCategoryPoints, computePickupPoints, formatDate, formatTimestamp
 } from '../services/pickupService';
+import { useTranslation } from '../i18n';
 
 const STATUS_COLORS = {
   Scheduled: colors.warning,
@@ -18,7 +19,7 @@ const STATUS_COLORS = {
 
 export const StatusBadge = ({ status }) => (
   <View style={[styles.badge, { backgroundColor: STATUS_COLORS[status] || colors.textSecondary }]}>
-    <Text style={styles.badgeText}>{STATUS_LABELS[status] || status}</Text>
+    <Text style={styles.badgeText}>{statusLabel(status)}</Text>
   </View>
 );
 
@@ -44,6 +45,7 @@ const TimelineStep = ({ done, title, detail }) => (
 );
 
 const PickupDetails = ({ pickup, showPhoto = true }) => {
+  const { t } = useTranslation();
   const [photo, setPhoto] = useState(null);
   const [photoLoading, setPhotoLoading] = useState(false);
 
@@ -68,45 +70,45 @@ const PickupDetails = ({ pickup, showPhoto = true }) => {
 
   return (
     <View>
-      <Row label="Society" value={pickup.societyName || pickup.societyCode} />
-      <Row label="Vendor" value={pickup.vendorName || pickup.vendor || '-'} />
-      <Row label="Pickup date" value={`${formatDate(pickup.scheduledDate || pickup.date)}${pickup.timeSlot ? ` • ${pickup.timeSlot}` : ''}`} />
+      <Row label={t('pickup.society')} value={pickup.societyName || pickup.societyCode} />
+      <Row label={t('pickup.vendor')} value={pickup.vendorName || pickup.vendor || '-'} />
+      <Row label={t('pickup.pickupDate')} value={`${formatDate(pickup.scheduledDate || pickup.date)}${pickup.timeSlot ? ` • ${timeSlotLabel(pickup.timeSlot)}` : ''}`} />
 
       {pickup.lastRejection && pickup.status === 'Scheduled' && (
         <View style={styles.rejectionBox}>
           <Text style={styles.rejectionTitle}>
-            Sent back for re-weighing by {pickup.lastRejection.byName} ({pickup.lastRejection.by === 'bmc_official' ? 'BMC' : 'Society'})
+            {t('pickup.sentBackBy', { name: pickup.lastRejection.byName, by: pickup.lastRejection.by === 'bmc_official' ? t('pickup.byBmc') : t('pickup.bySociety') })}
           </Text>
-          <Text style={styles.rejectionText}>Reason: {pickup.lastRejection.reason}</Text>
+          <Text style={styles.rejectionText}>{t('pickup.reason', { reason: pickup.lastRejection.reason })}</Text>
         </View>
       )}
 
       {hasWeights && (
         <>
-          <Text style={styles.sectionLabel}>Weighed quantities</Text>
+          <Text style={styles.sectionLabel}>{t('pickup.weighedQuantities')}</Text>
           {pickup.items.map(item => (
             <View key={item.id} style={styles.itemRow}>
-              <Text style={styles.itemName}>{item.category === 'recyclable' ? '♻️' : '🚫'} {item.name}</Text>
+              <Text style={styles.itemName}>{item.category === 'recyclable' ? '♻️' : '🚫'} {plasticName(item.id, item.name)}</Text>
               <Text style={styles.itemKg}>{item.kg} kg</Text>
             </View>
           ))}
           <View style={styles.totalsBox}>
-            <Row label="Recyclable" value={`${recyclableKg.toFixed(2)} kg → ${computeCategoryPoints(recyclableKg, 'recyclable', pickup.grade)} pts`} />
-            <Row label="Non-recyclable" value={`${nonRecyclableKg.toFixed(2)} kg → ${computeCategoryPoints(nonRecyclableKg, 'non_recyclable', pickup.grade)} pts`} />
-            <Row label="Segregation grade" value={`${getGrade(pickup.grade).label} (×${getGrade(pickup.grade).multiplier})`} />
-            <Row label="Total" value={`${(pickup.totalKg || 0).toFixed(2)} kg → ${pickup.pointsAwarded ?? computePickupPoints(pickup.items, pickup.grade)} pts`} />
+            <Row label={t('pickup.recyclable')} value={t('pickup.kgToPoints', { kg: recyclableKg.toFixed(2), points: computeCategoryPoints(recyclableKg, 'recyclable', pickup.grade) })} />
+            <Row label={t('pickup.nonRecyclable')} value={t('pickup.kgToPoints', { kg: nonRecyclableKg.toFixed(2), points: computeCategoryPoints(nonRecyclableKg, 'non_recyclable', pickup.grade) })} />
+            <Row label={t('pickup.grade')} value={`${gradeLabel(pickup.grade)} (×${getGrade(pickup.grade).multiplier})`} />
+            <Row label={t('pickup.total')} value={t('pickup.kgToPoints', { kg: (pickup.totalKg || 0).toFixed(2), points: pickup.pointsAwarded ?? computePickupPoints(pickup.items, pickup.grade) })} />
           </View>
 
-          <Text style={styles.sectionLabel}>Proof</Text>
+          <Text style={styles.sectionLabel}>{t('pickup.proof')}</Text>
           {pickup.location ? (
             <TouchableOpacity onPress={openMap} style={styles.locationRow}>
               <MaterialCommunityIcons name="map-marker" size={18} color={colors.primary} />
               <Text style={styles.locationText}>
-                {pickup.location.latitude.toFixed(5)}, {pickup.location.longitude.toFixed(5)} (open in Maps)
+                {pickup.location.latitude.toFixed(5)}, {pickup.location.longitude.toFixed(5)} {t('pickup.openInMaps')}
               </Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.warningText}>⚠️ Location was not captured at weighing</Text>
+            <Text style={styles.warningText}>{t('pickup.noLocation')}</Text>
           )}
 
           {showPhoto && (
@@ -115,27 +117,27 @@ const PickupDetails = ({ pickup, showPhoto = true }) => {
             ) : photo ? (
               <Image source={{ uri: photo }} style={styles.photo} resizeMode="contain" />
             ) : (
-              <Text style={styles.warningText}>⚠️ No scale photo</Text>
+              <Text style={styles.warningText}>{t('pickup.noPhoto')}</Text>
             )
           )}
         </>
       )}
 
-      <Text style={styles.sectionLabel}>Sign-off</Text>
-      <TimelineStep done title="Scheduled by society" detail={formatTimestamp(pickup.createdAt)} />
+      <Text style={styles.sectionLabel}>{t('pickup.signOff')}</Text>
+      <TimelineStep done title={t('pickup.stepScheduled')} detail={formatTimestamp(pickup.createdAt)} />
       <TimelineStep
         done={!!pickup.weighedAt && pickup.status !== 'Scheduled'}
-        title="Weighed by vendor"
+        title={t('pickup.stepWeighed')}
         detail={pickup.weighedAt && pickup.status !== 'Scheduled' ? `${pickup.vendorName} • ${formatTimestamp(pickup.weighedAt)}` : null}
       />
       <TimelineStep
         done={!!pickup.verifiedAt && ['Verified', 'Completed'].includes(pickup.status)}
-        title="Verified by BMC official"
+        title={t('pickup.stepVerified')}
         detail={pickup.verifiedAt && ['Verified', 'Completed'].includes(pickup.status) ? `${pickup.verifiedByName} • ${formatTimestamp(pickup.verifiedAt)}` : null}
       />
       <TimelineStep
         done={pickup.status === 'Completed'}
-        title="Confirmed by society admin"
+        title={t('pickup.stepConfirmed')}
         detail={pickup.confirmedAt ? `${pickup.confirmedByName} • ${formatTimestamp(pickup.confirmedAt)}` : null}
       />
     </View>

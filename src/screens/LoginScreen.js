@@ -7,9 +7,12 @@ import Button from '../components/Button';
 import Card from '../components/Card';
 import { colors } from '../theme/colors';
 import WardPicker from '../components/WardPicker';
+import LanguageToggle from '../components/LanguageToggle';
+import { useTranslation } from '../i18n';
 
 const LoginScreen = ({ navigation }) => {
   const { loginByCredentials, registerAdmin, registerMember, registerStaff } = useContext(AppContext);
+  const { t } = useTranslation();
   const [mode, setMode] = useState('login'); // login | register_member | register_admin | register_staff
 
   const [name, setName] = useState('');
@@ -29,34 +32,34 @@ const LoginScreen = ({ navigation }) => {
     try {
       if (mode === 'login') {
         if (!email || !password) {
-          Platform.OS === 'web' ? window.alert('Please enter email and password') : Alert.alert('Error', 'Please enter email and password');
+          Platform.OS === 'web' ? window.alert(t('login.enterEmailPassword')) : Alert.alert(t('common.error'), t('login.enterEmailPassword'));
           return;
         }
         await loginByCredentials(email, password);
       } else if (mode === 'register_admin') {
         if (!name || !email || !password || !societyName || !ward) {
-          Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
+          Platform.OS === 'web' ? window.alert(t('login.fillAllFields')) : Alert.alert(t('common.error'), t('login.fillAllFields'));
           return;
         }
         if (password !== confirmPassword) {
-          Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
+          Platform.OS === 'web' ? window.alert(t('login.passwordsDontMatch')) : Alert.alert(t('common.error'), t('login.passwordsDontMatch'));
           return;
         }
         const code = await registerAdmin(name, societyName, ward, email, password);
         
         if (Platform.OS === 'web') {
-          window.alert(`Society Registered! 🎉\nYour Society Code is: ${code}\n\nPlease save this code and share it with your residents so they can join your society on PlasticTrack.`);
+          window.alert(`${t('login.societyRegistered')}\n\n${t('login.societyCodeMessage', { code })}`);
           setMode('login');
           setPassword('');
           setConfirmPassword('');
           navigation.navigate("AdminSuccess", { societyCode: code });
         } else {
           Alert.alert(
-            "Society Registered! 🎉",
-            `Your Society Code is: ${code}\n\nPlease save this code and share it with your residents so they can join your society on PlasticTrack.`,
+            t('login.societyRegistered'),
+            t('login.societyCodeMessage', { code }),
             [
               {
-                text: "Copy Code",
+                text: t('login.copyCode'),
                 onPress: async () => {
                   await Clipboard.setStringAsync(code);
                   setMode('login');
@@ -66,7 +69,7 @@ const LoginScreen = ({ navigation }) => {
                 }
               },
               {
-                text: "OK, Got it!",
+                text: t('login.gotIt'),
                 onPress: () => {
                   setMode('login');
                   setPassword('');
@@ -79,27 +82,27 @@ const LoginScreen = ({ navigation }) => {
         }
       } else if (mode === 'register_member') {
         if (!name || !email || !password || !societyCode) {
-          Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
+          Platform.OS === 'web' ? window.alert(t('login.fillAllFields')) : Alert.alert(t('common.error'), t('login.fillAllFields'));
           return;
         }
         if (password !== confirmPassword) {
-          Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
+          Platform.OS === 'web' ? window.alert(t('login.passwordsDontMatch')) : Alert.alert(t('common.error'), t('login.passwordsDontMatch'));
           return;
         }
         await registerMember(name, email, societyCode, password);
       } else if (mode === 'register_staff') {
         if (!name || !organization || !ward || !inviteCode || !email || !password) {
-          Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
+          Platform.OS === 'web' ? window.alert(t('login.fillAllFields')) : Alert.alert(t('common.error'), t('login.fillAllFields'));
           return;
         }
         if (password !== confirmPassword) {
-          Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
+          Platform.OS === 'web' ? window.alert(t('login.passwordsDontMatch')) : Alert.alert(t('common.error'), t('login.passwordsDontMatch'));
           return;
         }
         await registerStaff(name, organization, ward, inviteCode, email, password);
       }
     } catch (e) {
-      Platform.OS === 'web' ? window.alert(e.message) : Alert.alert('Error', e.message);
+      Platform.OS === 'web' ? window.alert(e.message) : Alert.alert(t('common.error'), e.message);
     } finally {
       setSubmitting(false);
     }
@@ -108,29 +111,32 @@ const LoginScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+        <View style={{ alignItems: 'flex-end' }}>
+          <LanguageToggle />
+        </View>
         <View style={styles.header}>
           <MaterialCommunityIcons name="leaf" size={48} color={colors.primary} />
           <Text style={styles.title}>PlasticTrack</Text>
-          <Text style={styles.tagline}>Track. Reduce. Reward.</Text>
+          <Text style={styles.tagline}>{t('login.tagline')}</Text>
         </View>
         
         <Card style={styles.card}>
           {mode !== 'login' && (
             <View style={styles.tabContainer}>
               <Button 
-                title="Member" 
+                title={t('login.member')} 
                 type={mode === 'register_member' ? 'primary' : 'secondary'} 
                 onPress={() => setMode('register_member')} 
                 style={styles.tabButton} 
               />
               <Button 
-                title="Admin" 
+                title={t('login.admin')} 
                 type={mode === 'register_admin' ? 'primary' : 'secondary'} 
                 onPress={() => setMode('register_admin')} 
                 style={styles.tabButton} 
               />
               <Button 
-                title="Vendor / BMC" 
+                title={t('login.vendorBmc')} 
                 type={mode === 'register_staff' ? 'primary' : 'secondary'} 
                 onPress={() => setMode('register_staff')} 
                 style={styles.tabButton} 
@@ -139,37 +145,37 @@ const LoginScreen = ({ navigation }) => {
           )}
 
           {mode !== 'login' && (
-            <TextInput style={styles.input} placeholder="Full Name" value={name} onChangeText={setName} />
+            <TextInput style={styles.input} placeholder={t('login.fullName')} value={name} onChangeText={setName} />
           )}
           
           {mode === 'register_admin' && (
             <>
-              <TextInput style={styles.input} placeholder="Society Name" value={societyName} onChangeText={setSocietyName} />
-              <WardPicker value={ward} onChange={setWard} placeholder="BMC Ward of your society" />
+              <TextInput style={styles.input} placeholder={t('login.societyName')} value={societyName} onChangeText={setSocietyName} />
+              <WardPicker value={ward} onChange={setWard} placeholder={t('login.societyWard')} />
             </>
           )}
 
           {mode === 'register_member' && (
-            <TextInput style={styles.input} placeholder="Society Code (from Admin)" value={societyCode} onChangeText={setSocietyCode} autoCapitalize="characters" />
+            <TextInput style={styles.input} placeholder={t('login.societyCode')} value={societyCode} onChangeText={setSocietyCode} autoCapitalize="characters" />
           )}
 
           {mode === 'register_staff' && (
             <>
-              <TextInput style={styles.input} placeholder="Company / Department Name" value={organization} onChangeText={setOrganization} />
-              <WardPicker value={ward} onChange={setWard} placeholder="BMC Ward (you oversee / mainly serve)" />
-              <TextInput style={styles.input} placeholder="Invite Code" value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
+              <TextInput style={styles.input} placeholder={t('login.organization')} value={organization} onChangeText={setOrganization} />
+              <WardPicker value={ward} onChange={setWard} placeholder={t('login.staffWard')} />
+              <TextInput style={styles.input} placeholder={t('login.inviteCode')} value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
             </>
           )}
 
-          <TextInput style={styles.input} placeholder="Email" keyboardType="email-address" value={email} onChangeText={setEmail} autoCapitalize="none" />
-          <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
+          <TextInput style={styles.input} placeholder={t('login.email')} keyboardType="email-address" value={email} onChangeText={setEmail} autoCapitalize="none" />
+          <TextInput style={styles.input} placeholder={t('login.password')} secureTextEntry value={password} onChangeText={setPassword} />
           
           {mode !== 'login' && (
-            <TextInput style={styles.input} placeholder="Confirm Password" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+            <TextInput style={styles.input} placeholder={t('login.confirmPassword')} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
           )}
 
           <Button 
-            title={submitting ? 'Please wait...' : (mode === 'login' ? 'Login' : 'Register')} 
+            title={submitting ? t('common.pleaseWait') : (mode === 'login' ? t('login.login') : t('login.register'))} 
             onPress={executeAction} 
             disabled={submitting}
             style={{ marginTop: 20 }}
@@ -178,14 +184,14 @@ const LoginScreen = ({ navigation }) => {
           <View style={{ alignItems: 'center', marginTop: 15 }}>
             {mode === 'login' ? (
               <>
-                <Text style={styles.hint}>Admins: register your society | Members: use code</Text>
+                <Text style={styles.hint}>{t('login.hint')}</Text>
                 <TouchableOpacity onPress={() => setMode('register_member')}>
-                  <Text style={styles.linkText}>Don't have an account? Register</Text>
+                  <Text style={styles.linkText}>{t('login.noAccount')}</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <TouchableOpacity onPress={() => setMode('login')}>
-                <Text style={styles.linkText}>Already have an account? Login</Text>
+                <Text style={styles.linkText}>{t('login.haveAccount')}</Text>
               </TouchableOpacity>
             )}
           </View>

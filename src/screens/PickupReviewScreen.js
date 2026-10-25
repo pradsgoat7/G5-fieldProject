@@ -13,10 +13,12 @@ import {
   PICKUP_STATUS, PICKUP_INTERVAL_DAYS, IMPACT_FACTOR, RECYCLABLE_MF, NON_RECYCLABLE_MF,
   sumKg, computeCategoryPoints, computePickupPoints, addDays, toDateString, formatDate
 } from '../services/pickupService';
+import { useTranslation } from '../i18n';
 
 const PickupReviewScreen = ({ route, navigation }) => {
   const { pickupId } = route.params || {};
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [pickup, setPickup] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [reason, setReason] = useState('');
@@ -53,7 +55,7 @@ const PickupReviewScreen = ({ route, navigation }) => {
       await action();
     } catch (e) {
       console.error("Pickup review error:", e);
-      showMessage('Error', 'Could not save. It may have already been updated by someone else.');
+      showMessage(t('common.error'), t('review.saveError'));
     } finally {
       setIsSubmitting(false);
     }
@@ -61,9 +63,9 @@ const PickupReviewScreen = ({ route, navigation }) => {
 
   const sendBack = async () => {
     if (!reason.trim()) {
-      return showMessage('Reason needed', 'Explain what is wrong so the vendor can re-weigh correctly.');
+      return showMessage(t('review.reasonNeededTitle'), t('review.reasonNeeded'));
     }
-    const ok = await askConfirm('Send back for re-weighing?', `Reason: ${reason.trim()}`, 'Send Back');
+    const ok = await askConfirm(t('review.sendBackTitle'), t('pickup.reason', { reason: reason.trim() }), t('review.sendBackButton'));
     if (!ok) return;
     await run(async () => {
       await updateDoc(doc(db, "pickups", pickupId), {
@@ -76,16 +78,16 @@ const PickupReviewScreen = ({ route, navigation }) => {
         }
       });
       setReason('');
-      showMessage('Sent back', 'The vendor will be asked to re-weigh this collection.');
+      showMessage(t('review.sentBackTitle'), t('review.sentBack'));
       navigation.goBack();
     });
   };
 
   const approve = async () => {
     const ok = await askConfirm(
-      'Approve this weighing?',
-      `I confirm I witnessed ${pickup.totalKg.toFixed(2)} kg being weighed at ${pickup.societyName} and the grade ${pickup.grade} is correct.`,
-      'Approve'
+      t('review.approveTitle'),
+      t('review.approveMessage', { kg: pickup.totalKg.toFixed(2), society: pickup.societyName, grade: pickup.grade }),
+      t('review.approveButton')
     );
     if (!ok) return;
     await run(async () => {
@@ -95,7 +97,7 @@ const PickupReviewScreen = ({ route, navigation }) => {
         verifiedByName: user.name,
         verifiedAt: serverTimestamp()
       });
-      showMessage('Verified', 'Sent to the society admin for final confirmation.');
+      showMessage(t('review.verifiedTitle'), t('review.verified'));
       navigation.goBack();
     });
   };
@@ -104,9 +106,9 @@ const PickupReviewScreen = ({ route, navigation }) => {
     const points = computePickupPoints(pickup.items, pickup.grade);
     const nextDate = addDays(toDateString(new Date()), PICKUP_INTERVAL_DAYS);
     const ok = await askConfirm(
-      'Confirm collection?',
-      `${pickup.totalKg.toFixed(2)} kg verified by ${pickup.verifiedByName} (BMC).\n\n+${points} points will be added to your society, and the next pickup will be scheduled for ${formatDate(nextDate)}.`,
-      'Confirm'
+      t('review.confirmTitle'),
+      t('review.confirmMessage', { kg: pickup.totalKg.toFixed(2), name: pickup.verifiedByName, points, date: formatDate(nextDate) }),
+      t('review.confirmButton')
     );
     if (!ok) return;
 
@@ -146,8 +148,8 @@ const PickupReviewScreen = ({ route, navigation }) => {
       batch.set(doc(collection(db, "announcements")), {
         societyCode: user.societyCode,
         type: 'activity',
-        title: 'Pickup Verified',
-        description: `${pickup.totalKg.toFixed(2)} kg collected by ${pickup.vendorName}, verified by BMC (${pickup.verifiedByName}). +${points} points!`,
+        title: t('review.announcementTitle'),
+        description: t('review.announcement', { kg: pickup.totalKg.toFixed(2), vendor: pickup.vendorName, name: pickup.verifiedByName, points }),
         timestamp: Date.now()
       });
 
@@ -169,7 +171,7 @@ const PickupReviewScreen = ({ route, navigation }) => {
       });
 
       await batch.commit();
-      showMessage('Collection confirmed', `+${points} points added. Next pickup: ${formatDate(nextDate)}.`);
+      showMessage(t('review.confirmedTitle'), t('review.confirmed', { points, date: formatDate(nextDate) }));
       navigation.goBack();
     });
   };
@@ -177,7 +179,7 @@ const PickupReviewScreen = ({ route, navigation }) => {
   if (notFound) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center' }]}>
-        <Text style={styles.emptyText}>This pickup no longer exists.</Text>
+        <Text style={styles.emptyText}>{t('review.notFound')}</Text>
       </SafeAreaView>
     );
   }
@@ -188,7 +190,7 @@ const PickupReviewScreen = ({ route, navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 5 }}>
           <MaterialCommunityIcons name="arrow-left" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Collection Details</Text>
+        <Text style={styles.headerTitle}>{t('review.title')}</Text>
       </View>
 
       {!pickup ? (
@@ -204,28 +206,26 @@ const PickupReviewScreen = ({ route, navigation }) => {
 
           {(canVerify || canConfirm) && (
             <Card>
-              <Text style={styles.sectionTitle}>{canVerify ? 'BMC Verification' : 'Society Confirmation'}</Text>
+              <Text style={styles.sectionTitle}>{canVerify ? t('review.verifySection') : t('review.confirmSection')}</Text>
               <Text style={styles.hint}>
-                {canVerify
-                  ? 'Approve only if you were present and the weights, grade and photo match what you saw.'
-                  : 'Confirm only if these weights match what was collected from your society.'}
+                {canVerify ? t('review.verifyHint') : t('review.confirmHint')}
               </Text>
               <Button
-                title={isSubmitting ? 'Saving...' : (canVerify ? 'Approve Weighing' : 'Confirm & Credit Points')}
+                title={isSubmitting ? t('common.saving') : (canVerify ? t('review.approveWeighing') : t('review.confirmCredit'))}
                 onPress={canVerify ? approve : confirm}
                 disabled={isSubmitting}
                 style={{ marginTop: 5 }}
               />
-              <Text style={styles.label}>Something wrong?</Text>
+              <Text style={styles.label}>{t('review.somethingWrong')}</Text>
               <TextInput
                 style={styles.input}
                 multiline
-                placeholder={canVerify ? 'e.g. Scale reading does not match PET weight' : 'e.g. We handed over more than this'}
+                placeholder={canVerify ? t('review.verifyPlaceholder') : t('review.disputePlaceholder')}
                 value={reason}
                 onChangeText={setReason}
               />
               <Button
-                title={canVerify ? 'Send Back for Re-weighing' : 'Dispute & Ask to Re-weigh'}
+                title={canVerify ? t('review.sendBack') : t('review.dispute')}
                 type="secondary"
                 onPress={sendBack}
                 disabled={isSubmitting}

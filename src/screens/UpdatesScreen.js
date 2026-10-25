@@ -7,9 +7,11 @@ import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { useTranslation, getLocale } from '../i18n';
 
 const UpdatesScreen = () => {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [updates, setUpdates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -45,7 +47,7 @@ const UpdatesScreen = () => {
 
   const handlePost = async () => {
     if (!newTitle.trim() || !newDesc.trim()) {
-      return Alert.alert('Error', 'Please fill out both title and description.');
+      return Alert.alert(t('common.error'), t('updates.fillBoth'));
     }
     try {
       await addDoc(collection(db, "announcements"), {
@@ -57,35 +59,35 @@ const UpdatesScreen = () => {
         postedBy: user.uid,
         createdAt: serverTimestamp()    
       });
-      Alert.alert('Success', 'Update posted!');
+      Alert.alert(t('calculator.successTitle'), t('updates.posted'));
       setNewTitle('');
       setNewDesc('');
       setIsCreating(false);
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', 'Could not post update.');
+      Alert.alert(t('common.error'), t('updates.postError'));
     }
   };
 
   const handleDelete = async (id) => {
-    Alert.alert('Delete', 'Are you sure you want to delete this update?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
+    Alert.alert(t('updates.delete'), t('updates.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('updates.delete'), style: 'destructive', onPress: async () => {
           try {
             await deleteDoc(doc(db, "announcements", id));
           } catch (e) {
             console.error(e);
-            Alert.alert('Error', 'Could not delete update.');
+            Alert.alert(t('common.error'), t('updates.deleteError'));
           }
       }}
     ]);
   };
 
   const CATEGORIES = [
-    { id: 'announcement', icon: 'bullhorn', color: '#1976D2', label: 'Announcement' },
-    { id: 'pickup', icon: 'truck', color: '#F57D00', label: 'Vendor Pickup' },
-    { id: 'event', icon: 'calendar-star', color: '#9C27B0', label: 'Event' },
-    { id: 'progress', icon: 'trending-up', color: '#2E7D32', label: 'Progress Focus' }
+    { id: 'announcement', icon: 'bullhorn', color: '#1976D2', label: t('updates.categories.announcement') },
+    { id: 'pickup', icon: 'truck', color: '#F57D00', label: t('updates.categories.pickup') },
+    { id: 'event', icon: 'calendar-star', color: '#9C27B0', label: t('updates.categories.event') },
+    { id: 'progress', icon: 'trending-up', color: '#2E7D32', label: t('updates.categories.progress') }
   ];
 
   const getStyleForType = (type) => CATEGORIES.find(c => c.id === type) || CATEGORIES[0];
@@ -93,9 +95,9 @@ const UpdatesScreen = () => {
   if (hasError) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text>⚠️ Something went wrong loading updates.</Text>
+        <Text>{t('updates.loadError')}</Text>
         <TouchableOpacity onPress={() => setHasError(false)}>
-          <Text style={{color: '#2E7D32', marginTop: 10}}>Tap to retry</Text>
+          <Text style={{color: '#2E7D32', marginTop: 10}}>{t('updates.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -106,21 +108,21 @@ const UpdatesScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="broadcast" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Society Updates</Text>
+        <Text style={styles.headerTitle}>{t('updates.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {user?.role === 'admin' && (
            <View style={{ marginBottom: 20 }}>
              <Button 
-                title={isCreating ? "Cancel" : "Post New Update 📢"} 
+                title={isCreating ? t('common.cancel') : t('updates.postNew')} 
                 type={isCreating ? "secondary" : "primary"} 
                 onPress={() => setIsCreating(!isCreating)} 
              />
              
              {isCreating && (
                <Card style={styles.createCard}>
-                 <Text style={styles.sectionTitle}>Create Update</Text>
+                 <Text style={styles.sectionTitle}>{t('updates.create')}</Text>
                  
                  <View style={styles.typeSelectorRow}>
                    {CATEGORIES.map(c => (
@@ -135,35 +137,35 @@ const UpdatesScreen = () => {
                  </View>
 
                  <Text style={{fontSize: 12, color: colors.textSecondary, marginBottom: 10, alignSelf:'center', fontWeight:'bold'}}>
-                   {CATEGORIES.find(c => c.id === newType)?.label} Selected
+                   {t('updates.selected', { category: CATEGORIES.find(c => c.id === newType)?.label })}
                  </Text>
 
                  <TextInput 
                    style={styles.input} 
-                   placeholder="Headline Title"
+                   placeholder={t('updates.titlePlaceholder')}
                    value={newTitle}
                    onChangeText={setNewTitle}
                  />
                  <TextInput 
                    style={[styles.input, {height: 80, textAlignVertical: 'top'}]} 
-                   placeholder="Details / Description..."
+                   placeholder={t('updates.descPlaceholder')}
                    value={newDesc}
                    multiline
                    onChangeText={setNewDesc}
                  />
 
-                 <Button title="Post to Community" onPress={handlePost} />
+                 <Button title={t('updates.post')} onPress={handlePost} />
                </Card>
              )}
            </View>
         )}
 
-        <Text style={styles.sectionTitle}>Latest Updates</Text>
+        <Text style={styles.sectionTitle}>{t('updates.latest')}</Text>
         
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary} />
         ) : updates.length === 0 ? (
-          <Text style={styles.emptyText}>No recent updates from your society admin.</Text>
+          <Text style={styles.emptyText}>{t('updates.none')}</Text>
         ) : (
           updates.map(item => {
             const styleRef = getStyleForType(item.type);
@@ -175,7 +177,7 @@ const UpdatesScreen = () => {
                    </View>
                    <View style={{ flex: 1, marginLeft: 15 }}>
                       <Text style={styles.updateTitle}>{item.title}</Text>
-                      <Text style={styles.updateDate}>{item.timestamp ? new Date(item.timestamp).toLocaleString() : 'Just now'}</Text>
+                      <Text style={styles.updateDate}>{item.timestamp ? new Date(item.timestamp).toLocaleString(getLocale()) : t('common.justNow')}</Text>
                    </View>
                    {user?.role === 'admin' && (
                       <TouchableOpacity onPress={() => handleDelete(item.id)} style={{padding: 5}}>

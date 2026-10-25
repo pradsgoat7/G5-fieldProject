@@ -7,9 +7,23 @@ import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { useTranslation, getLocale } from '../i18n';
+
+// Reward poll options are stored by their English label; date options are typed by the admin
+const REWARD_OPTIONS = [
+  { id: 'water_bill', label: 'Water Bill Discount', cost: 10000 },
+  { id: 'property_tax', label: 'Property Tax Reduction', cost: 20000 },
+  { id: 'certificate', label: 'Certificate', cost: 2000 },
+  { id: 'free_pickup', label: 'Free Pickup', cost: 5000 }
+];
 
 const VotingScreen = () => {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
+  const optionLabel = (stored) => {
+    const option = REWARD_OPTIONS.find(o => o.label === stored);
+    return option ? t(`voting.options.${option.id}`) : stored;
+  };
   const [polls, setPolls] = useState([]);
   const [societyMemberCount, setSocietyMemberCount] = useState(1);
   const [societyPoints, setSocietyPoints] = useState(0);
@@ -45,13 +59,6 @@ const VotingScreen = () => {
     };
   }, [user]);
 
-  const REWARD_OPTIONS = [
-    { label: 'Water Bill Discount', cost: 10000 },
-    { label: 'Property Tax Reduction', cost: 20000 },
-    { label: 'Certificate', cost: 2000 },
-    { label: 'Free Pickup', cost: 5000 }
-  ];
-
   const showAlert = (title, msg) => {
     if (Platform.OS === 'web') {
       window.alert(`${title}: ${msg}`);
@@ -63,20 +70,20 @@ const VotingScreen = () => {
   const handleCreatePoll = async () => {
     try {
       if (!newPollQuestion || !newPollQuestion.trim()) {
-        return showAlert('Error', 'Please enter a valid poll question.');
+        return showAlert(t('common.error'), t('voting.enterQuestion'));
       }
 
       let finalOptions = [];
       if (newPollType === 'reward') {
         const affordable = REWARD_OPTIONS.filter(r => societyPoints >= r.cost).map(r => r.label);
         if (affordable.length < 2) {
-          return showAlert('Error', 'Your society must afford at least 2 reward options to launch a valid poll. Current points: ' + societyPoints);
+          return showAlert(t('common.error'), t('voting.notAffordable', { points: societyPoints }));
         }
         finalOptions = affordable;
       } else {
         const validDates = customDates.filter(d => Boolean(d) && d.trim().length > 0);
         if (validDates.length < 2) {
-          return showAlert('Error', 'Please provide at least 2 date options.');
+          return showAlert(t('common.error'), t('voting.needDates'));
         }
         finalOptions = validDates;
       }
@@ -93,13 +100,13 @@ const VotingScreen = () => {
          finalDecision: null
       });
 
-      showAlert('Success', 'Poll created successfully!');
+      showAlert(t('calculator.successTitle'), t('voting.created'));
       setIsCreating(false);
       setNewPollQuestion('');
       setCustomDates(['', '']);
     } catch(err) {
       console.log('Save Poll Error:', err);
-      showAlert('Error', 'Failed to save the poll correctly.');
+      showAlert(t('common.error'), t('voting.saveError'));
     }
   };
 
@@ -111,10 +118,10 @@ const VotingScreen = () => {
 
       const newVotes = { ...poll.votes, [user.uid]: optionIndex };
       await updateDoc(pollRef, { votes: newVotes });
-      showAlert('Voted!', 'Your vote has been cast. Thank you!');
+      showAlert(t('voting.votedTitle'), t('voting.voted'));
     } catch (e) {
       console.log(e);
-      showAlert('Error', 'Could not cast vote.');
+      showAlert(t('common.error'), t('voting.voteError'));
     }
   };
 
@@ -125,10 +132,10 @@ const VotingScreen = () => {
          status: 'completed',
          finalDecision: chosenOptionLabel
       });
-      showAlert('Resolved', 'You successfully resolved the tie!');
+      showAlert(t('voting.resolvedTitle'), t('voting.resolved'));
     } catch (e) {
       console.log(e);
-      showAlert('Error', 'Could not resolve tie.');
+      showAlert(t('common.error'), t('voting.resolveError'));
     }
   };
 
@@ -151,30 +158,30 @@ const VotingScreen = () => {
 
     if (isCompleted) {
       if (totalVotes < requiredVotes) {
-        resultJSX = <Text style={[styles.statusText, {color: colors.error}]}>Insufficient Participation (required {requiredVotes})</Text>;
+        resultJSX = <Text style={[styles.statusText, {color: colors.error}]}>{t('voting.insufficient', { required: requiredVotes })}</Text>;
       } else {
         const maxVotes = Math.max(...optionCounts.map(o => o.count));
         const winners = optionCounts.filter(o => o.count === maxVotes);
         
         if (poll.finalDecision) {
-           resultJSX = <Text style={[styles.statusText, {color: colors.success}]}>Winner: {poll.finalDecision}</Text>;
+           resultJSX = <Text style={[styles.statusText, {color: colors.success}]}>{t('voting.winner', { option: optionLabel(poll.finalDecision) })}</Text>;
         } else if (winners.length > 1) {
            if (user.role === 'admin') {
              resultJSX = (
                <View style={{marginTop: 10}}>
-                 <Text style={[styles.statusText, {color: colors.warning, marginBottom: 10}]}>Tie — Admin Decision Required</Text>
+                 <Text style={[styles.statusText, {color: colors.warning, marginBottom: 10}]}>{t('voting.tie')}</Text>
                  {winners.map(w => (
                    <TouchableOpacity key={w.idx} onPress={() => finalizeTie(poll.id, w.opt)} style={styles.tieBtn}>
-                     <Text style={{color: '#FFF', fontWeight: 'bold'}}>👉 Finalize "{w.opt}"</Text>
+                     <Text style={{color: '#FFF', fontWeight: 'bold'}}>{t('voting.finalize', { option: optionLabel(w.opt) })}</Text>
                    </TouchableOpacity>
                  ))}
                </View>
              );
            } else {
-             resultJSX = <Text style={[styles.statusText, {color: colors.warning}]}>Tie — Admin Decision Required</Text>;
+             resultJSX = <Text style={[styles.statusText, {color: colors.warning}]}>{t('voting.tie')}</Text>;
            }
         } else {
-           resultJSX = <Text style={[styles.statusText, {color: colors.success}]}>Winner: {winners[0].opt}</Text>;
+           resultJSX = <Text style={[styles.statusText, {color: colors.success}]}>{t('voting.winner', { option: optionLabel(winners[0].opt) })}</Text>;
         }
       }
     }
@@ -186,8 +193,8 @@ const VotingScreen = () => {
            <Text style={styles.pollQuestion}>{poll.question}</Text>
         </View>
 
-        {!isCompleted && <Text style={styles.infoText}>Ends: {new Date(poll.endsAt).toLocaleDateString()}</Text>}
-        <Text style={styles.infoText}>Participation: {totalVotes} / {requiredVotes} required</Text>
+        {!isCompleted && <Text style={styles.infoText}>{t('voting.ends', { date: new Date(poll.endsAt).toLocaleDateString(getLocale()) })}</Text>}
+        <Text style={styles.infoText}>{t('voting.participation', { votes: totalVotes, required: requiredVotes })}</Text>
 
         <View style={{ marginTop: 15 }}>
           {optionCounts.map(item => {
@@ -198,16 +205,16 @@ const VotingScreen = () => {
               <View key={item.idx} style={styles.optionContainer}>
                  {(!isCompleted && !hasVoted && user.role === 'member') ? (
                     <TouchableOpacity style={styles.voteBtn} onPress={() => handleVote(poll.id, item.idx)}>
-                       <Text style={styles.voteBtnText}>Vote</Text>
+                       <Text style={styles.voteBtnText}>{t('voting.vote')}</Text>
                     </TouchableOpacity>
                  ) : null}
 
                  <View style={{flex: 1}}>
                    <View style={styles.optionLabelRow}>
                      <Text style={[styles.optionName, isUserChoice && {color: colors.primary, fontWeight: 'bold'}]}>
-                       {item.opt} {isUserChoice ? '✅' : ''}
+                       {optionLabel(item.opt)} {isUserChoice ? '✅' : ''}
                      </Text>
-                     <Text style={styles.optionStats}>{item.count} votes ({pct}%)</Text>
+                     <Text style={styles.optionStats}>{t('voting.votes', { count: item.count, pct })}</Text>
                    </View>
                    <View style={styles.progressBarBg}>
                      <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
@@ -227,7 +234,7 @@ const VotingScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="vote" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Community Voting</Text>
+        <Text style={styles.headerTitle}>{t('voting.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -237,65 +244,65 @@ const VotingScreen = () => {
         {user?.role === 'admin' && (
           <View style={styles.adminControls}>
              <Button 
-                title={isCreating ? "Cancel" : "Create New Poll"} 
+                title={isCreating ? t('common.cancel') : t('voting.createNew')} 
                 type={isCreating ? "secondary" : "primary"} 
                 onPress={() => setIsCreating(!isCreating)} 
              />
 
              {isCreating && (
                <Card style={styles.createCard}>
-                 <Text style={styles.sectionTitle}>Create Poll</Text>
+                 <Text style={styles.sectionTitle}>{t('voting.createPoll')}</Text>
                  
                  <View style={styles.typeSelector}>
                     <TouchableOpacity style={[styles.typeBtn, newPollType === 'reward' && styles.typeBtnActive]} onPress={() => setNewPollType('reward')}>
-                      <Text style={[styles.typeText, newPollType === 'reward' && {color: '#FFF'}]}>Reward Vote</Text>
+                      <Text style={[styles.typeText, newPollType === 'reward' && {color: '#FFF'}]}>{t('voting.rewardVote')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.typeBtn, newPollType === 'date' && styles.typeBtnActive]} onPress={() => setNewPollType('date')}>
-                      <Text style={[styles.typeText, newPollType === 'date' && {color: '#FFF'}]}>Pickup Date Vote</Text>
+                      <Text style={[styles.typeText, newPollType === 'date' && {color: '#FFF'}]}>{t('voting.dateVote')}</Text>
                     </TouchableOpacity>
                  </View>
 
                  <TextInput 
                    style={styles.input} 
-                   placeholder="Enter Poll Question"
+                   placeholder={t('voting.questionPlaceholder')}
                    value={newPollQuestion}
                    onChangeText={setNewPollQuestion}
                  />
 
                  {newPollType === 'date' && (
                    <View>
-                     <Text style={{marginBottom: 5, color: colors.textSecondary}}>Option 1:</Text>
-                     <TextInput style={styles.input} value={customDates[0]} onChangeText={(t) => {const n=[...customDates]; n[0]=t; setCustomDates(n);}} placeholder="e.g. 15th Nov" />
-                     <Text style={{marginBottom: 5, color: colors.textSecondary}}>Option 2:</Text>
-                     <TextInput style={styles.input} value={customDates[1]} onChangeText={(t) => {const n=[...customDates]; n[1]=t; setCustomDates(n);}} placeholder="e.g. 20th Nov" />
-                     <Text style={{fontSize: 12, color: '#888'}}>Only standard 2 choices provided for demo</Text>
+                     <Text style={{marginBottom: 5, color: colors.textSecondary}}>{t('voting.option', { n: 1 })}</Text>
+                     <TextInput style={styles.input} value={customDates[0]} onChangeText={(v) => {const n=[...customDates]; n[0]=v; setCustomDates(n);}} placeholder={t('voting.dateExample1')} />
+                     <Text style={{marginBottom: 5, color: colors.textSecondary}}>{t('voting.option', { n: 2 })}</Text>
+                     <TextInput style={styles.input} value={customDates[1]} onChangeText={(v) => {const n=[...customDates]; n[1]=v; setCustomDates(n);}} placeholder={t('voting.dateExample2')} />
+                     <Text style={{fontSize: 12, color: '#888'}}>{t('voting.twoChoices')}</Text>
                    </View>
                  )}
 
                  {newPollType === 'reward' && (
                    <Text style={{fontSize: 12, color: '#888', marginBottom: 10, fontStyle: 'italic'}}>
-                     Reward options are automatically drafted based on affordability (Society Points: {societyPoints}).
+                     {t('voting.rewardHint', { points: societyPoints })}
                    </Text>
                  )}
 
-                 <Button title="Launch Poll" onPress={handleCreatePoll} />
+                 <Button title={t('voting.launch')} onPress={handleCreatePoll} />
                </Card>
              )}
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>Active Polls</Text>
+        <Text style={styles.sectionTitle}>{t('voting.active')}</Text>
         {polls.filter(p => p.status !== 'completed' && Date.now() <= p.endsAt).length === 0 ? (
-          <Text style={styles.emptyText}>No active polls right now.</Text>
+          <Text style={styles.emptyText}>{t('voting.noActive')}</Text>
         ) : (
           polls.filter(p => p.status !== 'completed' && Date.now() <= p.endsAt).map(renderPoll)
         )}
 
         <View style={{height: 30}} />
 
-        <Text style={styles.sectionTitle}>Completed Polls</Text>
+        <Text style={styles.sectionTitle}>{t('voting.completed')}</Text>
         {polls.filter(p => p.status === 'completed' || Date.now() > p.endsAt).length === 0 ? (
-          <Text style={styles.emptyText}>No completed polls yet.</Text>
+          <Text style={styles.emptyText}>{t('voting.noCompleted')}</Text>
         ) : (
           polls.filter(p => p.status === 'completed' || Date.now() > p.endsAt).map(renderPoll)
         )}

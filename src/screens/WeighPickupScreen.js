@@ -9,15 +9,17 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import { showMessage, askConfirm } from '../services/dialogs';
 import {
-  PICKUP_STATUS, RECYCLABLE_TYPES, NON_RECYCLABLE_TYPES, GRADES,
+  PICKUP_STATUS, RECYCLABLE_TYPES, NON_RECYCLABLE_TYPES, GRADES, gradeLabel, gradeDesc, plasticName, timeSlotLabel,
   computePickupPoints, formatDate, captureScalePhoto, getCurrentLocation
 } from '../services/pickupService';
+import { useTranslation } from '../i18n';
 
 const MAX_KG_PER_TYPE = 2000;
 
 const WeighPickupScreen = ({ route, navigation }) => {
   const { pickupId } = route.params || {};
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [pickup, setPickup] = useState(null);
   const [weights, setWeights] = useState({});
   const [grade, setGrade] = useState(null);
@@ -34,12 +36,12 @@ const WeighPickupScreen = ({ route, navigation }) => {
   }, [pickupId]);
 
   const allTypes = [
-    ...RECYCLABLE_TYPES.map(t => ({ ...t, category: 'recyclable' })),
-    ...NON_RECYCLABLE_TYPES.map(t => ({ ...t, category: 'non_recyclable' }))
+    ...RECYCLABLE_TYPES.map(type => ({ ...type, category: 'recyclable' })),
+    ...NON_RECYCLABLE_TYPES.map(type => ({ ...type, category: 'non_recyclable' }))
   ];
 
   const items = allTypes
-    .map(t => ({ id: t.id, name: t.name, category: t.category, kg: parseFloat(weights[t.id]) }))
+    .map(type => ({ id: type.id, name: type.name, category: type.category, kg: parseFloat(weights[type.id]) }))
     .filter(i => i.kg > 0);
   const totalKg = items.reduce((acc, i) => acc + i.kg, 0);
 
@@ -49,7 +51,7 @@ const WeighPickupScreen = ({ route, navigation }) => {
       const dataUri = await captureScalePhoto();
       if (dataUri) setPhoto(dataUri);
     } catch (e) {
-      showMessage('Photo failed', e.message);
+      showMessage(t('weigh.photoFailed'), e.message);
     } finally {
       setIsCapturing(false);
     }
@@ -58,16 +60,16 @@ const WeighPickupScreen = ({ route, navigation }) => {
   const submit = async () => {
     const invalid = Object.entries(weights).find(([, v]) => v !== '' && (isNaN(parseFloat(v)) || parseFloat(v) < 0 || parseFloat(v) > MAX_KG_PER_TYPE));
     if (invalid) {
-      return showMessage('Invalid weight', `Each weight must be between 0 and ${MAX_KG_PER_TYPE} kg.`);
+      return showMessage(t('weigh.invalidWeightTitle'), t('weigh.invalidWeight', { max: MAX_KG_PER_TYPE }));
     }
-    if (items.length === 0) return showMessage('No weights entered', 'Enter the weighed kg for at least one plastic type.');
-    if (!grade) return showMessage('Grade missing', 'Select the segregation grade.');
-    if (!photo) return showMessage('Photo missing', 'Take a photo of the weighing scale showing the reading.');
+    if (items.length === 0) return showMessage(t('weigh.noWeightsTitle'), t('weigh.noWeights'));
+    if (!grade) return showMessage(t('weigh.gradeMissingTitle'), t('weigh.gradeMissing'));
+    if (!photo) return showMessage(t('weigh.photoMissingTitle'), t('weigh.photoMissing'));
 
     const ok = await askConfirm(
-      'Submit weighing?',
-      `${totalKg.toFixed(2)} kg total, grade ${grade}.\n\nThis will be sent to the BMC official for verification. You cannot edit it afterwards.`,
-      'Submit'
+      t('weigh.confirmTitle'),
+      t('weigh.confirmMessage', { kg: totalKg.toFixed(2), grade }),
+      t('weigh.submit')
     );
     if (!ok) return;
 
@@ -95,11 +97,11 @@ const WeighPickupScreen = ({ route, navigation }) => {
         weighedBy: user.uid
       });
       await batch.commit();
-      showMessage('Submitted', 'Sent to the BMC official for verification.');
+      showMessage(t('weigh.submittedTitle'), t('weigh.submitted'));
       navigation.goBack();
     } catch (e) {
       console.error("Weigh submit error:", e);
-      showMessage('Error', 'Could not submit. Check your connection and try again.');
+      showMessage(t('common.error'), t('common.connectionError'));
     } finally {
       setIsSubmitting(false);
     }
@@ -115,15 +117,15 @@ const WeighPickupScreen = ({ route, navigation }) => {
 
   const canWeigh = pickup.status === PICKUP_STATUS.SCHEDULED && pickup.vendorUid === user.uid;
 
-  const renderTypeInputs = (types, category) => types.map(t => (
-    <View key={t.id} style={styles.weightRow}>
-      <Text style={styles.weightLabel}>{category === 'recyclable' ? '♻️' : '🚫'} {t.name}</Text>
+  const renderTypeInputs = (types, category) => types.map(type => (
+    <View key={type.id} style={styles.weightRow}>
+      <Text style={styles.weightLabel}>{category === 'recyclable' ? '♻️' : '🚫'} {plasticName(type.id, type.name)}</Text>
       <TextInput
         style={styles.weightInput}
         keyboardType="decimal-pad"
         placeholder="0"
-        value={weights[t.id] || ''}
-        onChangeText={(v) => setWeights({ ...weights, [t.id]: v })}
+        value={weights[type.id] || ''}
+        onChangeText={(v) => setWeights({ ...weights, [type.id]: v })}
       />
       <Text style={styles.kgUnit}>kg</Text>
     </View>
@@ -135,50 +137,50 @@ const WeighPickupScreen = ({ route, navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 5 }}>
           <MaterialCommunityIcons name="arrow-left" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Weigh Collection</Text>
+        <Text style={styles.headerTitle}>{t('weigh.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Card>
           <Text style={styles.societyName}>{pickup.societyName}</Text>
-          <Text style={styles.detail}>{formatDate(pickup.scheduledDate)} • {pickup.timeSlot}</Text>
-          {pickup.instructions ? <Text style={styles.detail}>Note: {pickup.instructions}</Text> : null}
+          <Text style={styles.detail}>{formatDate(pickup.scheduledDate)} • {timeSlotLabel(pickup.timeSlot)}</Text>
+          {pickup.instructions ? <Text style={styles.detail}>{t('vendorHome.note', { note: pickup.instructions })}</Text> : null}
         </Card>
 
         {!canWeigh ? (
-          <Text style={styles.emptyText}>This collection has already been weighed.</Text>
+          <Text style={styles.emptyText}>{t('weigh.alreadyWeighed')}</Text>
         ) : (
           <>
             <Card>
-              <Text style={styles.sectionTitle}>1. Weigh each type</Text>
-              <Text style={styles.hint}>Leave blank if the society had none of that type.</Text>
-              <Text style={styles.groupLabel}>Recyclable</Text>
+              <Text style={styles.sectionTitle}>{t('weigh.step1')}</Text>
+              <Text style={styles.hint}>{t('weigh.step1Hint')}</Text>
+              <Text style={styles.groupLabel}>{t('weigh.recyclable')}</Text>
               {renderTypeInputs(RECYCLABLE_TYPES, 'recyclable')}
-              <Text style={styles.groupLabel}>Non-Recyclable</Text>
+              <Text style={styles.groupLabel}>{t('weigh.nonRecyclable')}</Text>
               {renderTypeInputs(NON_RECYCLABLE_TYPES, 'non_recyclable')}
-              <Text style={styles.totalText}>Total: {totalKg.toFixed(2)} kg</Text>
+              <Text style={styles.totalText}>{t('weigh.total', { kg: totalKg.toFixed(2) })}</Text>
             </Card>
 
             <Card>
-              <Text style={styles.sectionTitle}>2. Segregation grade</Text>
+              <Text style={styles.sectionTitle}>{t('weigh.step2')}</Text>
               {GRADES.map(g => (
                 <TouchableOpacity
                   key={g.id}
                   style={[styles.gradeOption, grade === g.id && styles.gradeSelected]}
                   onPress={() => setGrade(g.id)}
                 >
-                  <Text style={[styles.gradeLabel, grade === g.id && { color: '#FFF' }]}>{g.label}</Text>
-                  <Text style={[styles.gradeDesc, grade === g.id && { color: '#FFF' }]}>{g.desc} • points ×{g.multiplier}</Text>
+                  <Text style={[styles.gradeLabel, grade === g.id && { color: '#FFF' }]}>{gradeLabel(g.id)}</Text>
+                  <Text style={[styles.gradeDesc, grade === g.id && { color: '#FFF' }]}>{t('weigh.gradeDesc', { desc: gradeDesc(g.id), multiplier: g.multiplier })}</Text>
                 </TouchableOpacity>
               ))}
             </Card>
 
             <Card>
-              <Text style={styles.sectionTitle}>3. Photo of the scale</Text>
-              <Text style={styles.hint}>Photograph the scale display with the waste on it so the reading is visible.</Text>
+              <Text style={styles.sectionTitle}>{t('weigh.step3')}</Text>
+              <Text style={styles.hint}>{t('weigh.step3Hint')}</Text>
               {photo && <Image source={{ uri: photo }} style={styles.photo} resizeMode="contain" />}
               <Button
-                title={isCapturing ? 'Processing photo...' : (photo ? 'Retake Photo' : 'Take Photo')}
+                title={isCapturing ? t('weigh.processingPhoto') : (photo ? t('weigh.retakePhoto') : t('weigh.takePhoto'))}
                 type={photo ? 'secondary' : 'primary'}
                 onPress={takePhoto}
                 disabled={isCapturing}
@@ -188,13 +190,13 @@ const WeighPickupScreen = ({ route, navigation }) => {
 
             <Card style={{ backgroundColor: '#E8F5E9' }}>
               <Text style={styles.previewText}>
-                Points for society: {grade ? computePickupPoints(items, grade) : '- (select grade)'}
+                {t('weigh.pointsPreview', { points: grade ? computePickupPoints(items, grade) : t('weigh.selectGrade') })}
               </Text>
-              <Text style={styles.hint}>Your location is recorded when you submit.</Text>
+              <Text style={styles.hint}>{t('weigh.locationNote')}</Text>
             </Card>
 
             <Button
-              title={isSubmitting ? 'Submitting...' : 'Submit for BMC Verification'}
+              title={isSubmitting ? t('weigh.submitting') : t('weigh.submitForVerification')}
               onPress={submit}
               disabled={isSubmitting}
               style={{ marginTop: 10 }}

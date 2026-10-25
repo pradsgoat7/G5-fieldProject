@@ -8,10 +8,13 @@ import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { StatusBadge } from '../components/PickupDetails';
-import { PICKUP_STATUS, daysUntil, describeCountdown, formatDate } from '../services/pickupService';
+import { PICKUP_STATUS, daysUntil, describeCountdown, formatDate, timeSlotLabel } from '../services/pickupService';
+import { useTranslation } from '../i18n';
+import LanguageToggle from '../components/LanguageToggle';
 
 const VendorHomeScreen = ({ navigation }) => {
   const { user, logout } = useContext(AppContext);
+  const { t } = useTranslation();
   const [pickups, setPickups] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,22 +43,25 @@ const VendorHomeScreen = ({ navigation }) => {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <MaterialCommunityIcons name="truck-delivery" size={28} color={colors.primary} />
-          <Text style={styles.headerTitle}>My Collections</Text>
+          <Text style={styles.headerTitle}>{t('vendorHome.title')}</Text>
         </View>
-        <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
-          <MaterialCommunityIcons name="logout" size={26} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <LanguageToggle style={{ marginRight: 8 }} />
+          <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
+            <MaterialCommunityIcons name="logout" size={26} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.greeting}>Hello, {user?.name}</Text>
-        <Text style={styles.subtitle}>{user?.organization} • Vendor</Text>
+        <Text style={styles.greeting}>{t('vendorHome.hello', { name: user?.name })}</Text>
+        <Text style={styles.subtitle}>{t('vendorHome.subtitle', { organization: user?.organization })}</Text>
 
-        <Text style={styles.sectionTitle}>Upcoming Collections</Text>
+        <Text style={styles.sectionTitle}>{t('vendorHome.upcoming')}</Text>
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary} />
         ) : upcoming.length === 0 ? (
-          <Text style={styles.emptyText}>No collections assigned to you yet.</Text>
+          <Text style={styles.emptyText}>{t('vendorHome.noneAssigned')}</Text>
         ) : (
           upcoming.map(p => {
             const days = daysUntil(p.scheduledDate);
@@ -65,15 +71,15 @@ const VendorHomeScreen = ({ navigation }) => {
                   <Text style={styles.societyName}>{p.societyName}</Text>
                   <Text style={[styles.countdown, days < 0 && { color: colors.error }]}>{describeCountdown(p.scheduledDate)}</Text>
                 </View>
-                <Text style={styles.detail}>{formatDate(p.scheduledDate)} • {p.timeSlot}</Text>
-                {p.instructions ? <Text style={styles.detail}>Note: {p.instructions}</Text> : null}
+                <Text style={styles.detail}>{formatDate(p.scheduledDate)} • {timeSlotLabel(p.timeSlot)}</Text>
+                {p.instructions ? <Text style={styles.detail}>{t('vendorHome.note', { note: p.instructions })}</Text> : null}
                 {p.lastRejection && (
                   <Text style={styles.rejection}>
-                    Re-weigh requested by {p.lastRejection.byName}: {p.lastRejection.reason}
+                    {t('vendorHome.reweighRequested', { name: p.lastRejection.byName, reason: p.lastRejection.reason })}
                   </Text>
                 )}
                 <Button
-                  title={p.lastRejection ? 'Re-weigh Collection' : 'Start Weighing'}
+                  title={p.lastRejection ? t('vendorHome.reweigh') : t('vendorHome.startWeighing')}
                   onPress={() => navigation.navigate('WeighPickup', { pickupId: p.id })}
                   style={{ marginTop: 12, paddingVertical: 10 }}
                 />
@@ -82,9 +88,9 @@ const VendorHomeScreen = ({ navigation }) => {
           })
         )}
 
-        <Text style={styles.sectionTitle}>Submitted</Text>
+        <Text style={styles.sectionTitle}>{t('vendorHome.submitted')}</Text>
         {!isLoading && submitted.length === 0 && (
-          <Text style={styles.emptyText}>Nothing submitted yet.</Text>
+          <Text style={styles.emptyText}>{t('vendorHome.nothingSubmitted')}</Text>
         )}
         {submitted.map(p => (
           <TouchableOpacity key={p.id} onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })}>
@@ -93,7 +99,7 @@ const VendorHomeScreen = ({ navigation }) => {
                 <Text style={styles.societyName}>{p.societyName}</Text>
                 <StatusBadge status={p.status} />
               </View>
-              <Text style={styles.detail}>{formatDate(p.scheduledDate)} • {(p.totalKg || 0).toFixed(2)} kg • Grade {p.grade}</Text>
+              <Text style={styles.detail}>{t('vendorHome.submittedDetail', { date: formatDate(p.scheduledDate), kg: (p.totalKg || 0).toFixed(2), grade: p.grade })}</Text>
             </Card>
           </TouchableOpacity>
         ))}

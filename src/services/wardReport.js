@@ -1,4 +1,5 @@
 import { PICKUP_STATUS, GRADES, sumKg, daysUntil, toDateString } from './pickupService';
+import { translate as t, getLocale } from '../i18n';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -6,18 +7,22 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const INACTIVE_AFTER_DAYS = 30;
 
 export const PERIODS = [
-  { id: '30', label: 'Last 30 days', days: 30 },
-  { id: '90', label: 'Last 90 days', days: 90 },
-  { id: 'all', label: 'All time', days: null }
+  { id: '30', days: 30 },
+  { id: '90', days: 90 },
+  { id: 'all', days: null }
 ];
+
+export const periodLabel = (period) => t(`dashboard.period.${period.id}`);
 
 // Ordered by how urgently the ward officer should follow up
 export const SOCIETY_STATUS = {
-  OVERDUE: { id: 'overdue', label: 'Overdue', icon: 'alert-circle', order: 0 },
-  NOT_STARTED: { id: 'not_started', label: 'No collections yet', icon: 'clock-outline', order: 1 },
-  INACTIVE: { id: 'inactive', label: 'Inactive', icon: 'pause-circle', order: 2 },
-  ACTIVE: { id: 'active', label: 'Active', icon: 'check-circle', order: 3 }
+  OVERDUE: { id: 'overdue', icon: 'alert-circle', order: 0 },
+  NOT_STARTED: { id: 'not_started', icon: 'clock-outline', order: 1 },
+  INACTIVE: { id: 'inactive', icon: 'pause-circle', order: 2 },
+  ACTIVE: { id: 'active', icon: 'check-circle', order: 3 }
 };
+
+export const societyStatusLabel = (status) => t(`dashboard.societyStatus.${status.id}`);
 
 const toMillis = (ts) => {
   if (!ts) return Date.now(); // serverTimestamp() still pending locally
@@ -34,8 +39,8 @@ const summarize = (pickups) => {
   pickups.forEach(p => {
     if (gradeCounts[p.grade] !== undefined) gradeCounts[p.grade] += 1;
     p.items.forEach(item => {
-      const key = item.name;
-      typeKg[key] = typeKg[key] || { name: item.name, category: item.category, kg: 0 };
+      const key = item.id || item.name;
+      typeKg[key] = typeKg[key] || { id: item.id, name: item.name, category: item.category, kg: 0 };
       typeKg[key].kg += item.kg;
     });
   });
@@ -109,8 +114,8 @@ export const buildMonthlyTrend = (pickups, months = 6, now = new Date()) => {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     buckets.push({
       key: `${d.getFullYear()}-${d.getMonth()}`,
-      label: d.toLocaleDateString(undefined, { month: 'short' }),
-      fullLabel: d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+      label: d.toLocaleDateString(getLocale(), { month: 'short' }),
+      fullLabel: d.toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' }),
       kg: 0
     });
   }
@@ -129,22 +134,22 @@ const csvCell = (value) => {
 
 export const buildWardCsv = (report, periodLabel, wardName) => {
   const rows = [
-    ['PlasticTrack Ward Report'],
-    ['Ward', wardName],
-    ['Period', periodLabel],
-    ['Generated', new Date().toLocaleString()],
+    [t('csv.title')],
+    [t('csv.ward'), wardName],
+    [t('csv.period'), periodLabel],
+    [t('csv.generated'), new Date().toLocaleString(getLocale())],
     [],
-    ['BMC-verified plastic collected (kg)', report.totalKg.toFixed(2)],
-    ['Recyclable (kg)', report.recyclableKg.toFixed(2)],
-    ['Non-recyclable (kg)', report.nonRecyclableKg.toFixed(2)],
-    ['Verified collections', report.collections],
-    ['Grade A / B / C collections', `${report.gradeCounts.A} / ${report.gradeCounts.B} / ${report.gradeCounts.C}`],
-    ['Active societies', `${report.activeSocieties} of ${report.totalSocieties}`],
+    [t('csv.totalKg'), report.totalKg.toFixed(2)],
+    [t('csv.recyclableKg'), report.recyclableKg.toFixed(2)],
+    [t('csv.nonRecyclableKg'), report.nonRecyclableKg.toFixed(2)],
+    [t('csv.collections'), report.collections],
+    [t('csv.grades'), `${report.gradeCounts.A} / ${report.gradeCounts.B} / ${report.gradeCounts.C}`],
+    [t('csv.activeSocieties'), t('csv.activeOf', { active: report.activeSocieties, total: report.totalSocieties })],
     [],
-    ['Society', 'Society Code', 'Members', 'Status', 'Verified Collections', 'Total kg', 'Recyclable kg',
-      'Non-recyclable kg', 'kg per Member', 'Grade A %', 'Last Verified Collection', 'Next Pickup'],
+    [t('csv.society'), t('csv.societyCode'), t('csv.members'), t('csv.status'), t('csv.verifiedCollections'), t('csv.total'),
+      t('csv.recyclable'), t('csv.nonRecyclable'), t('csv.kgPerMember'), t('csv.gradeAPercent'), t('csv.lastVerified'), t('csv.nextPickup')],
     ...report.societies.map(r => [
-      r.societyName, r.societyCode, r.members, r.status.label, r.collections, r.totalKg.toFixed(2),
+      r.societyName, r.societyCode, r.members, societyStatusLabel(r.status), r.collections, r.totalKg.toFixed(2),
       r.recyclableKg.toFixed(2), r.nonRecyclableKg.toFixed(2), r.kgPerMember.toFixed(2),
       r.gradeAShare === null ? '' : Math.round(r.gradeAShare * 100), r.lastVerified || '', r.nextPickup || ''
     ])

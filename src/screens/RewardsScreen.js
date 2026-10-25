@@ -8,16 +8,12 @@ import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
 
-const REWARDS = [
-  { id: '1', title: 'Water Bill Discount', points: 500, desc: 'Get ₹100 off your next water bill.', icon: 'water-percent' },
-  { id: '2', title: 'Property Tax Reduction', points: 1000, desc: 'Avail a 2% discount on municipal tax.', icon: 'home-city-outline' },
-  { id: '3', title: 'Sustainability Certificate', points: 300, desc: 'Official digital certificate of impact.', icon: 'certificate-outline' },
-  { id: '4', title: 'Recognition Badge', points: 200, desc: 'Special badge in the community hub.', icon: 'medal-outline' },
-  { id: '5', title: 'Free Recycling Pickup', points: 150, desc: 'One scheduled pickup free of cost.', icon: 'recycle' },
-];
+import { REWARDS, rewardTitle, rewardDesc, translateRewardName } from '../services/rewards';
+import { useTranslation, getLocale } from '../i18n';
 
 const RewardsScreen = ({ navigation }) => {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [points, setPoints] = useState(0);
   const [redemptions, setRedemptions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,12 +49,12 @@ const RewardsScreen = ({ navigation }) => {
 
   const redeem = (reward) => {
     Alert.alert(
-      'Confirm Redemption',
-      `Redeem ${reward.title} for ${reward.points} points?`,
+      t('rewards.confirmTitle'),
+      t('rewards.confirmMessage', { reward: rewardTitle(reward), points: reward.points }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         { 
-          text: 'Redeem', 
+          text: t('rewards.redeem'), 
           onPress: async () => {
             try {
               await addDoc(collection(db, "redemptions"), {
@@ -76,15 +72,15 @@ const RewardsScreen = ({ navigation }) => {
               await addDoc(collection(db, "announcements"), {
                 societyCode: user.societyCode,
                 type: 'activity',
-                title: 'Reward Redeemed',
-                description: `Redeemed ${reward.title} for ${reward.points} points`,
+                title: t('rewards.announcementTitle'),
+                description: t('rewards.announcement', { reward: rewardTitle(reward), points: reward.points }),
                 timestamp: Date.now()
               });
 
-              Alert.alert('Success', 'Reward redeemed successfully!');
+              Alert.alert(t('calculator.successTitle'), t('rewards.success'));
             } catch (e) {
               console.error(e);
-              Alert.alert('Error', 'Could not redeem reward. Check your connection.');
+              Alert.alert(t('common.error'), t('common.connectionError'));
             }
           }
         }
@@ -98,24 +94,24 @@ const RewardsScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Rewards</Text>
+        <Text style={styles.headerTitle}>{t('rewards.title')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.balanceContainer}>
-          <Text style={styles.balanceLabel}>Current Balance</Text>
+          <Text style={styles.balanceLabel}>{t('rewards.balance')}</Text>
           <View style={styles.pointsRow}>
             <MaterialCommunityIcons name="star-circle" size={36} color="#FFD700" />
             {isLoading ? (
               <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 10 }} />
             ) : (
-              <Text style={styles.balanceValue}>{points} pts</Text>
+              <Text style={styles.balanceValue}>{t('common.pts', { value: points })}</Text>
             )}
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Rewards Catalogue</Text>
+        <Text style={styles.sectionTitle}>{t('rewards.catalogue')}</Text>
         
         {REWARDS.map(reward => {
           const canRedeem = points >= reward.points;
@@ -126,13 +122,13 @@ const RewardsScreen = ({ navigation }) => {
                   <MaterialCommunityIcons name={reward.icon} size={32} color={colors.primary} />
                 </View>
                 <View style={styles.rewardInfo}>
-                  <Text style={styles.rewardTitle}>{reward.title}</Text>
-                  <Text style={styles.rewardPoints}>{reward.points} points</Text>
+                  <Text style={styles.rewardTitle}>{rewardTitle(reward)}</Text>
+                  <Text style={styles.rewardPoints}>{t('rewards.points', { points: reward.points })}</Text>
                 </View>
               </View>
-              <Text style={styles.rewardDesc}>{reward.desc}</Text>
+              <Text style={styles.rewardDesc}>{rewardDesc(reward)}</Text>
               <Button 
-                title={canRedeem ? "Redeem Reward" : "Not Enough Points"} 
+                title={canRedeem ? t('rewards.redeemReward') : t('rewards.notEnough')} 
                 onPress={() => redeem(reward)} 
                 disabled={!canRedeem}
                 style={styles.redeemButton}
@@ -141,18 +137,18 @@ const RewardsScreen = ({ navigation }) => {
           );
         })}
 
-        <Text style={styles.sectionTitle}>Redemption History</Text>
+        <Text style={styles.sectionTitle}>{t('rewards.history')}</Text>
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary} />
         ) : redemptions.length === 0 ? (
-          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginBottom: 20 }}>No redemptions yet.</Text>
+          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginBottom: 20 }}>{t('rewards.noRedemptions')}</Text>
         ) : (
           redemptions.map(r => (
             <Card key={r.id} style={styles.historyCard}>
-              <Text style={styles.historyTitle}>{r.rewardName}</Text>
+              <Text style={styles.historyTitle}>{translateRewardName(r.rewardName)}</Text>
               <View style={styles.historyDetails}>
-                <Text style={styles.historyDate}>{r.date?.toDate ? r.date.toDate().toLocaleDateString() : 'Just now'}</Text>
-                <Text style={styles.historyPoints}>-{r.pointsSpent} pts</Text>
+                <Text style={styles.historyDate}>{r.date?.toDate ? r.date.toDate().toLocaleDateString(getLocale()) : t('common.justNow')}</Text>
+                <Text style={styles.historyPoints}>{t('common.pts', { value: -r.pointsSpent })}</Text>
               </View>
             </Card>
           ))

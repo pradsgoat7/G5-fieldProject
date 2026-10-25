@@ -9,8 +9,12 @@ import Card from '../components/Card';
 import { showMessage } from '../services/dialogs';
 import { WardSetupCard } from '../components/WardPicker';
 import { getWardLabel } from '../services/wards';
-import { GRADES, formatDate, toDateString } from '../services/pickupService';
-import { PERIODS, SOCIETY_STATUS, buildWardReport, buildMonthlyTrend, buildWardCsv } from '../services/wardReport';
+import { GRADES, gradeLabel, plasticName, formatDate, toDateString } from '../services/pickupService';
+import {
+  PERIODS, periodLabel, societyStatusLabel, buildWardReport, buildMonthlyTrend, buildWardCsv
+} from '../services/wardReport';
+import { useTranslation, translate } from '../i18n';
+import LanguageToggle from '../components/LanguageToggle';
 
 // Validated categorical slots (colorblind-safe pair); text never uses these colors
 const SERIES_RECYCLABLE = '#2a78d6';
@@ -23,7 +27,7 @@ const STATUS_ICON_COLORS = {
   active: colors.success
 };
 
-const formatKg = (kg) => `${kg >= 100 ? Math.round(kg) : kg.toFixed(1)} kg`;
+const formatKg = (kg) => translate('common.kg', { value: kg >= 100 ? Math.round(kg) : kg.toFixed(1) });
 const formatPercent = (share) => (share === null ? '–' : `${Math.round(share * 100)}%`);
 
 const HBar = ({ label, value, max, color, valueText }) => (
@@ -47,6 +51,7 @@ const StatTile = ({ icon, iconColor, label, value }) => (
 );
 
 const MonthlyTrend = ({ trend }) => {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState(trend.length - 1);
   const max = Math.max(...trend.map(b => b.kg), 0);
   const current = trend[selected];
@@ -78,13 +83,14 @@ const MonthlyTrend = ({ trend }) => {
           </Pressable>
         ))}
       </View>
-      <Text style={styles.chartNote}>Tap a month to see its total{max > 0 ? ` • tallest bar ${formatKg(max)}` : ''}</Text>
+      <Text style={styles.chartNote}>{t('dashboard.tapMonth')}{max > 0 ? ` • ${t('dashboard.tallestBar', { kg: formatKg(max) })}` : ''}</Text>
     </View>
   );
 };
 
 const WardDashboardScreen = ({ navigation }) => {
   const { user, logout } = useContext(AppContext);
+  const { t, language } = useTranslation();
   const [pickups, setPickups] = useState([]);
   const [societies, setSocieties] = useState([]);
   const [periodId, setPeriodId] = useState(PERIODS[0].id);
@@ -117,11 +123,12 @@ const WardDashboardScreen = ({ navigation }) => {
   const unassignedSocieties = societies.filter(s => !s.ward).length;
 
   const report = useMemo(() => buildWardReport(wardPickups, wardSocieties, period.days), [wardPickups, wardSocieties, period.days]);
-  const trend = useMemo(() => buildMonthlyTrend(wardPickups), [wardPickups]);
+  // Month names are localized when the trend is built, so rebuild on language change
+  const trend = useMemo(() => buildMonthlyTrend(wardPickups), [wardPickups, language]);
   const wardName = getWardLabel(user?.ward);
 
   const exportCsv = async () => {
-    const csv = buildWardCsv(report, period.label, wardName);
+    const csv = buildWardCsv(report, periodLabel(period), wardName);
     const fileName = `plastictrack-ward-report-${toDateString(new Date())}.csv`;
     try {
       if (Platform.OS === 'web') {
@@ -138,17 +145,17 @@ const WardDashboardScreen = ({ navigation }) => {
       }
     } catch (e) {
       console.error("CSV export error:", e);
-      showMessage('Export failed', 'Could not export the report.');
+      showMessage(t('dashboard.exportFailedTitle'), t('dashboard.exportFailed'));
     }
   };
 
   const maxMaterialKg = report.materials.length ? report.materials[0].kg : 0;
   const maxGradeCount = Math.max(...GRADES.map(g => report.gradeCounts[g.id]), 0);
   const attentionItems = [
-    report.overdueSocieties > 0 && { icon: 'alert-circle', color: colors.error, text: `${report.overdueSocieties} ${report.overdueSocieties === 1 ? 'society has' : 'societies have'} an overdue collection` },
-    report.awaitingVerification > 0 && { icon: 'shield-alert', color: colors.warning, text: `${report.awaitingVerification} weighing${report.awaitingVerification === 1 ? '' : 's'} waiting for BMC verification`, onPress: () => navigation.navigate('Verify') },
-    report.noPickupScheduled > 0 && { icon: 'calendar-remove', color: colors.textSecondary, text: `${report.noPickupScheduled} ${report.noPickupScheduled === 1 ? 'society has' : 'societies have'} no collection scheduled` },
-    unassignedSocieties > 0 && { icon: 'map-marker-question', color: colors.textSecondary, text: `${unassignedSocieties} registered ${unassignedSocieties === 1 ? 'society has' : 'societies have'} not set a ward yet (not included here)` }
+    report.overdueSocieties > 0 && { icon: 'alert-circle', color: colors.error, text: t('dashboard.attentionOverdue', { count: report.overdueSocieties }) },
+    report.awaitingVerification > 0 && { icon: 'shield-alert', color: colors.warning, text: t('dashboard.attentionAwaiting', { count: report.awaitingVerification }), onPress: () => navigation.navigate('Verify') },
+    report.noPickupScheduled > 0 && { icon: 'calendar-remove', color: colors.textSecondary, text: t('dashboard.attentionNoPickup', { count: report.noPickupScheduled }) },
+    unassignedSocieties > 0 && { icon: 'map-marker-question', color: colors.textSecondary, text: t('dashboard.attentionNoWard', { count: unassignedSocieties }) }
   ].filter(Boolean);
 
   return (
@@ -156,19 +163,22 @@ const WardDashboardScreen = ({ navigation }) => {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
           <MaterialCommunityIcons name="view-dashboard" size={28} color={colors.primary} />
-          <Text style={styles.headerTitle}>Ward Dashboard</Text>
+          <Text style={styles.headerTitle}>{t('dashboard.title')}</Text>
         </View>
-        <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
-          <MaterialCommunityIcons name="logout" size={26} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <LanguageToggle style={{ marginRight: 8 }} />
+          <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
+            <MaterialCommunityIcons name="logout" size={26} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.wardName}>{wardName}</Text>
-        <Text style={styles.subtitle}>{user?.organization} • only BMC-verified collections are counted</Text>
+        <Text style={styles.subtitle}>{t('dashboard.subtitle', { organization: user?.organization })}</Text>
 
         {!user?.ward && (
-          <WardSetupCard message="Select the ward you oversee. The dashboard shows only societies in that ward." />
+          <WardSetupCard message={t('ward.setupOfficialDashboard')} />
         )}
 
         <View style={styles.filterRow}>
@@ -179,13 +189,13 @@ const WardDashboardScreen = ({ navigation }) => {
                 style={[styles.chip, periodId === p.id && styles.chipSelected]}
                 onPress={() => setPeriodId(p.id)}
               >
-                <Text style={[styles.chipText, periodId === p.id && styles.chipTextSelected]}>{p.label}</Text>
+                <Text style={[styles.chipText, periodId === p.id && styles.chipTextSelected]}>{periodLabel(p)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
           <TouchableOpacity style={styles.exportButton} onPress={exportCsv} disabled={isLoading}>
             <MaterialCommunityIcons name="download" size={18} color={colors.primary} />
-            <Text style={styles.exportText}>Export</Text>
+            <Text style={styles.exportText}>{t('dashboard.export')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -194,23 +204,23 @@ const WardDashboardScreen = ({ navigation }) => {
         ) : (
           <>
             <Card>
-              <Text style={styles.heroLabel}>Plastic collected & verified</Text>
+              <Text style={styles.heroLabel}>{t('dashboard.heroLabel')}</Text>
               <Text style={styles.heroValue}>{formatKg(report.totalKg)}</Text>
               <Text style={styles.heroDetail}>
-                {report.collections} verified collection{report.collections === 1 ? '' : 's'} • {formatPercent(report.recyclableShare)} recyclable • {period.label.toLowerCase()}
+                {t('dashboard.heroDetail', { count: report.collections, share: formatPercent(report.recyclableShare), period: periodLabel(period) })}
               </Text>
             </Card>
 
             <View style={styles.tileGrid}>
-              <StatTile icon="home-group" label="Active societies" value={`${report.activeSocieties} / ${report.totalSocieties}`} />
-              <StatTile icon="star-circle" label="Grade A collections" value={formatPercent(report.gradeAShare)} />
-              <StatTile icon="recycle" label="Recyclable" value={formatKg(report.recyclableKg)} />
-              <StatTile icon="trash-can-outline" label="Non-recyclable" value={formatKg(report.nonRecyclableKg)} />
+              <StatTile icon="home-group" label={t('dashboard.activeSocieties')} value={`${report.activeSocieties} / ${report.totalSocieties}`} />
+              <StatTile icon="star-circle" label={t('dashboard.gradeACollections')} value={formatPercent(report.gradeAShare)} />
+              <StatTile icon="recycle" label={t('pickup.recyclable')} value={formatKg(report.recyclableKg)} />
+              <StatTile icon="trash-can-outline" label={t('pickup.nonRecyclable')} value={formatKg(report.nonRecyclableKg)} />
             </View>
 
             {attentionItems.length > 0 && (
               <Card>
-                <Text style={styles.cardTitle}>Needs attention</Text>
+                <Text style={styles.cardTitle}>{t('dashboard.needsAttention')}</Text>
                 {attentionItems.map(item => (
                   <TouchableOpacity key={item.text} style={styles.attentionRow} onPress={item.onPress} disabled={!item.onPress}>
                     <MaterialCommunityIcons name={item.icon} size={18} color={item.color} />
@@ -222,30 +232,30 @@ const WardDashboardScreen = ({ navigation }) => {
             )}
 
             <Card>
-              <Text style={styles.cardTitle}>Verified plastic per month</Text>
-              <Text style={styles.cardSubtitle}>Last 6 months, all societies in {wardName}</Text>
+              <Text style={styles.cardTitle}>{t('dashboard.perMonth')}</Text>
+              <Text style={styles.cardSubtitle}>{t('dashboard.perMonthSubtitle', { ward: wardName })}</Text>
               <MonthlyTrend trend={trend} />
             </Card>
 
             <Card>
-              <Text style={styles.cardTitle}>Collected by material</Text>
+              <Text style={styles.cardTitle}>{t('dashboard.byMaterial')}</Text>
               <View style={styles.legend}>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendSwatch, { backgroundColor: SERIES_RECYCLABLE }]} />
-                  <Text style={styles.legendText}>Recyclable</Text>
+                  <Text style={styles.legendText}>{t('pickup.recyclable')}</Text>
                 </View>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendSwatch, { backgroundColor: SERIES_NON_RECYCLABLE }]} />
-                  <Text style={styles.legendText}>Non-recyclable</Text>
+                  <Text style={styles.legendText}>{t('pickup.nonRecyclable')}</Text>
                 </View>
               </View>
               {report.materials.length === 0 ? (
-                <Text style={styles.emptyText}>No verified collections in this period.</Text>
+                <Text style={styles.emptyText}>{t('dashboard.noCollections')}</Text>
               ) : (
                 report.materials.map(m => (
                   <HBar
-                    key={m.name}
-                    label={m.name}
+                    key={m.id || m.name}
+                    label={plasticName(m.id, m.name)}
                     value={m.kg}
                     max={maxMaterialKg}
                     color={m.category === 'recyclable' ? SERIES_RECYCLABLE : SERIES_NON_RECYCLABLE}
@@ -256,15 +266,15 @@ const WardDashboardScreen = ({ navigation }) => {
             </Card>
 
             <Card>
-              <Text style={styles.cardTitle}>Segregation quality</Text>
-              <Text style={styles.cardSubtitle}>Grade given at weighing, checked by the BMC official</Text>
+              <Text style={styles.cardTitle}>{t('dashboard.segregation')}</Text>
+              <Text style={styles.cardSubtitle}>{t('dashboard.segregationSubtitle')}</Text>
               {GRADES.map(g => {
                 const count = report.gradeCounts[g.id];
                 const share = report.collections ? count / report.collections : null;
                 return (
                   <HBar
                     key={g.id}
-                    label={g.label}
+                    label={gradeLabel(g.id)}
                     value={count}
                     max={maxGradeCount}
                     color={SERIES_RECYCLABLE}
@@ -275,10 +285,10 @@ const WardDashboardScreen = ({ navigation }) => {
             </Card>
 
             <Card>
-              <Text style={styles.cardTitle}>Societies</Text>
-              <Text style={styles.cardSubtitle}>Needs-attention first, then by kg collected • {period.label.toLowerCase()}</Text>
+              <Text style={styles.cardTitle}>{t('dashboard.societies')}</Text>
+              <Text style={styles.cardSubtitle}>{t('dashboard.societiesSubtitle', { period: periodLabel(period) })}</Text>
               {report.societies.length === 0 ? (
-                <Text style={styles.emptyText}>No societies registered in {wardName} yet.</Text>
+                <Text style={styles.emptyText}>{t('dashboard.noSocieties', { ward: wardName })}</Text>
               ) : (
                 report.societies.map(s => (
                   <View key={s.societyCode} style={styles.societyRow}>
@@ -286,15 +296,15 @@ const WardDashboardScreen = ({ navigation }) => {
                       <Text style={styles.societyName} numberOfLines={1}>{s.societyName}</Text>
                       <View style={styles.statusChip}>
                         <MaterialCommunityIcons name={s.status.icon} size={14} color={STATUS_ICON_COLORS[s.status.id]} />
-                        <Text style={styles.statusText}>{s.status.label}</Text>
+                        <Text style={styles.statusText}>{societyStatusLabel(s.status)}</Text>
                       </View>
                     </View>
                     <Text style={styles.societyDetail}>
-                      {formatKg(s.totalKg)} • {s.kgPerMember.toFixed(1)} kg/member • {s.collections} collection{s.collections === 1 ? '' : 's'}
-                      {s.gradeAShare !== null ? ` • Grade A ${formatPercent(s.gradeAShare)}` : ''}
+                      {formatKg(s.totalKg)} • {t('dashboard.kgPerMember', { kg: s.kgPerMember.toFixed(1) })} • {t('dashboard.collectionCount', { count: s.collections })}
+                      {s.gradeAShare !== null ? ` • ${t('dashboard.gradeAShare', { share: formatPercent(s.gradeAShare) })}` : ''}
                     </Text>
                     <Text style={styles.societyDetail}>
-                      Last verified {s.lastVerified ? formatDate(s.lastVerified) : 'never'} • {s.nextPickup ? `Next pickup ${formatDate(s.nextPickup)}` : 'No pickup scheduled'}
+                      {t('dashboard.lastVerified', { date: s.lastVerified ? formatDate(s.lastVerified) : t('dashboard.never') })} • {s.nextPickup ? t('dashboard.nextPickup', { date: formatDate(s.nextPickup) }) : t('dashboard.noPickupScheduled')}
                     </Text>
                   </View>
                 ))

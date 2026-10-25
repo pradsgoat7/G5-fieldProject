@@ -9,9 +9,12 @@ import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import { WardSetupCard } from '../components/WardPicker';
 import { getWardLabel } from '../services/wards';
+import { useTranslation, getLocale } from '../i18n';
+import LanguageToggle from '../components/LanguageToggle';
 
 const HomeScreen = ({ navigation }) => {
   const { user, logout } = useContext(AppContext);
+  const { t } = useTranslation();
   const [adminRankData, setAdminRankData] = useState(null);
   const [hasActivePoll, setHasActivePoll] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -99,7 +102,8 @@ const HomeScreen = ({ navigation }) => {
       
       const formattedActivities = myEntries.sort((a,b) => b.date - a.date).map(e => ({
         id: e.id,
-        title: `Logged ${e.items?.length || 0} items (${e.totalKg || 0} kg)`,
+        itemCount: e.items?.length || 0,
+        totalKg: e.totalKg || 0,
         date: e.date
       }));
       setPersonalActivity(formattedActivities);
@@ -133,10 +137,10 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const getFootprintLabel = (val) => {
-    if (val < 0.2) return 'Excellent';
-    if (val <= 0.5) return 'Good';
-    if (val <= 1) return 'Moderate';
-    return 'High';
+    if (val < 0.2) return t('rating.excellent');
+    if (val <= 0.5) return t('rating.good');
+    if (val <= 1) return t('rating.moderate');
+    return t('rating.high');
   };
 
   return (
@@ -146,35 +150,38 @@ const HomeScreen = ({ navigation }) => {
           <MaterialCommunityIcons name="leaf" size={28} color={colors.primary} />
           <Text style={styles.headerTitle}>PlasticTrack</Text>
         </View>
-        <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
-          <MaterialCommunityIcons name="logout" size={28} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <LanguageToggle style={{ marginRight: 8 }} />
+          <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
+            <MaterialCommunityIcons name="logout" size={28} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.greetingSection}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={styles.greeting}>Hello, {user?.name} 👋</Text>
+            <Text style={styles.greeting}>{t('home.hello', { name: user?.name })}</Text>
             <View style={{ backgroundColor: user?.role === 'admin' ? colors.primary : '#E0E0E0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, marginLeft: 10 }}>
-              <Text style={{ color: user?.role === 'admin' ? '#FFF' : '#5C5C5C', fontSize: 10, fontWeight: 'bold' }}>{user?.role === 'admin' ? 'ADMIN' : 'MEMBER'}</Text>
+              <Text style={{ color: user?.role === 'admin' ? '#FFF' : '#5C5C5C', fontSize: 10, fontWeight: 'bold' }}>{user?.role === 'admin' ? t('home.adminBadge') : t('home.memberBadge')}</Text>
             </View>
           </View>
           <Text style={styles.society}>{user?.societyName}{user?.ward ? ` • ${getWardLabel(user.ward)}` : ''}</Text>
           {user?.role === 'admin' && (
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: '#E8F5E9', padding: 8, borderRadius: 6, alignSelf: 'flex-start' }}>
-              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Your Society Code: </Text>
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>{t('home.societyCode')} </Text>
               <Text style={{ fontSize: 14, fontWeight: 'bold', color: colors.primary, marginRight: 8 }}>{user?.societyCode}</Text>
               <TouchableOpacity onPress={async () => {
                 await Clipboard.setStringAsync(user?.societyCode);
-                Alert.alert('Copied!', 'Society code copied to clipboard.', [{ text: 'OK' }]);
+                Alert.alert(t('common.copied'), t('common.copiedCode'), [{ text: t('common.ok') }]);
               }}>
-                <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600', textDecorationLine: 'underline' }}>[Copy]</Text>
+                <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600', textDecorationLine: 'underline' }}>{t('common.copy')}</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {user?.role === 'admin' && !user?.ward && (
-            <WardSetupCard message="Your society was registered before wards were added. Select its BMC ward so the right ward officer can verify your collections." />
+            <WardSetupCard message={t('ward.setupAdmin')} />
           )}
 
           {/* Smart Highlight: Active Polls Banner */}
@@ -185,7 +192,7 @@ const HomeScreen = ({ navigation }) => {
              <View style={{flexDirection: 'row', alignItems: 'center' }}>
                 <MaterialCommunityIcons name={hasActivePoll ? "alert-circle" : "vote"} size={24} color={hasActivePoll ? "#F57F17" : "#1976D2"} />
                 <Text style={{ marginLeft: 10, fontSize: 16, fontWeight: 'bold', color: hasActivePoll ? '#F57F17' : '#1976D2' }}>
-                  {hasActivePoll ? 'Vote Now 🗳️ - Action Required' : 'Community Voting 🗳️'}
+                  {hasActivePoll ? t('home.voteNow') : t('home.communityVoting')}
                 </Text>
              </View>
              <MaterialCommunityIcons name="chevron-right" size={24} color={hasActivePoll ? "#F57F17" : "#1976D2"} />
@@ -198,7 +205,7 @@ const HomeScreen = ({ navigation }) => {
              <View style={{flexDirection: 'row', alignItems: 'center' }}>
                 <MaterialCommunityIcons name="broadcast" size={24} color={colors.primary} />
                 <Text style={{ marginLeft: 10, fontSize: 16, fontWeight: 'bold', color: colors.primary }}>
-                  Society Updates 📢
+                  {t('home.societyUpdates')}
                 </Text>
              </View>
              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.primary} />
@@ -211,7 +218,7 @@ const HomeScreen = ({ navigation }) => {
              <View style={{flexDirection: 'row', alignItems: 'center' }}>
                 <MaterialCommunityIcons name="frequently-asked-questions" size={24} color={colors.primary} />
                 <Text style={{ marginLeft: 10, fontSize: 16, fontWeight: 'bold', color: colors.primary }}>
-                  FAQs ❓
+                  {t('home.faqs')}
                 </Text>
              </View>
              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.primary} />
@@ -220,24 +227,24 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.cardsRow}>
           <Card style={[styles.mainCard, { borderTopWidth: 4, borderTopColor: getFootprintColor(societyOverviewFootprint) }]}>
-            <Text style={styles.cardTitle}>Society's Footprint</Text>
+            <Text style={styles.cardTitle}>{t('home.societyFootprint')}</Text>
             <View style={styles.scoreRow}>
               <Text style={styles.scoreText}>{societyOverviewFootprint.toFixed(2)} kg</Text>
             </View>
           </Card>
 
           <Card style={[styles.mainCard, { borderTopWidth: 4, borderTopColor: '#FFD700' }]}>
-            <Text style={styles.cardTitle}>Reward Points</Text>
+            <Text style={styles.cardTitle}>{t('home.rewardPoints')}</Text>
             <View style={styles.scoreRow}>
               <MaterialCommunityIcons name="star" size={28} color="#FFD700" />
               <Text style={[styles.pointsText, { color: points > 0 ? colors.success : (points < 0 ? 'red' : 'gray') }]}>{points}</Text>
             </View>
             {points < 0 && (
-              <Text style={{ fontSize: 12, color: 'red', marginBottom: 10 }}>⚠️ Your society is in negative points due to non-recyclable plastic submissions.</Text>
+              <Text style={{ fontSize: 12, color: 'red', marginBottom: 10 }}>{t('home.negativePoints')}</Text>
             )}
             {user?.role === 'admin' && (
               <TouchableOpacity onPress={() => navigation.navigate('Rewards')} style={styles.linkButton}>
-                <Text style={styles.linkText}>Manage Rewards</Text>
+                <Text style={styles.linkText}>{t('home.manageRewards')}</Text>
               </TouchableOpacity>
             )}
           </Card>
@@ -245,11 +252,11 @@ const HomeScreen = ({ navigation }) => {
 
         {user?.role === 'admin' && adminRankData && (
           <Card style={[styles.mainCard, { marginBottom: 20, borderTopWidth: 4, borderTopColor: colors.primary, overflow: 'hidden' }]}>
-            <Text style={styles.cardTitle}>Society Rank</Text>
+            <Text style={styles.cardTitle}>{t('home.societyRank')}</Text>
             {adminRankData.isEvaluating ? (
               <View>
-                <Text style={styles.scoreText}>Under Evaluation 🕐</Text>
-                <Text style={{ fontSize: 13, color: '#888', marginBottom: 10, marginTop: 4 }}>Ranking begins after 2 weeks</Text>
+                <Text style={styles.scoreText}>{t('home.underEvaluation')}</Text>
+                <Text style={{ fontSize: 13, color: '#888', marginBottom: 10, marginTop: 4 }}>{t('home.rankingBegins')}</Text>
               </View>
             ) : (
               <View>
@@ -260,15 +267,15 @@ const HomeScreen = ({ navigation }) => {
                   </Text>
                 </View>
                 <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 10, fontWeight: '500' }}>
-                  {adminRankData.normalizedScore.toFixed(1)} pts/household/week
+                  {t('home.ptsPerHousehold', { value: adminRankData.normalizedScore.toFixed(1) })}
                 </Text>
                 {adminRankData.grade === 'D' && (
-                  <Text style={{ fontSize: 12, color: '#D32F2F', fontStyle: 'italic', marginBottom: 10 }}>Submitting too much non-recyclable plastic.</Text>
+                  <Text style={{ fontSize: 12, color: '#D32F2F', fontStyle: 'italic', marginBottom: 10 }}>{t('home.tooMuchNonRecyclable')}</Text>
                 )}
               </View>
             )}
             <TouchableOpacity onPress={() => navigation.navigate('Community')} style={[styles.linkButton, { marginTop: 0 }]}>
-              <Text style={styles.linkText}>View Full Leaderboard →</Text>
+              <Text style={styles.linkText}>{t('home.viewLeaderboard')}</Text>
             </TouchableOpacity>
           </Card>
         )}
@@ -276,7 +283,7 @@ const HomeScreen = ({ navigation }) => {
         {user?.role === 'member' && (
           <View>
             <Card style={[styles.mainCard, { marginBottom: 15, borderTopWidth: 4, borderTopColor: getFootprintColor(footprint) }]}>
-              <Text style={styles.cardTitle}>Your Personal Footprint</Text>
+              <Text style={styles.cardTitle}>{t('home.personalFootprint')}</Text>
               <View style={styles.scoreRow}>
                 <Text style={styles.scoreText}>{footprint.toFixed(2)} kg</Text>
               </View>
@@ -289,31 +296,31 @@ const HomeScreen = ({ navigation }) => {
               style={{ backgroundColor: '#E8F5E9', padding: 15, borderRadius: 12, alignItems: 'center', borderColor: '#C8E6C9', borderWidth: 1, marginBottom: 20 }}
               onPress={() => navigation.navigate('SustainabilityReport')}
             >
-              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>View My Report Card 🌿</Text>
+              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>{t('home.viewReportCard')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>Quick Stats</Text>
+        <Text style={styles.sectionTitle}>{t('home.quickStats')}</Text>
         <View style={styles.statsRow}>
           {user?.role === 'admin' ? (
             <Card style={styles.statCard}>
               <Text style={styles.statValue}>{memberCount}</Text>
-              <Text style={styles.statLabel}>Members</Text>
+              <Text style={styles.statLabel}>{t('home.members')}</Text>
             </Card>
           ) : (
             <Card style={styles.statCard}>
               <Text style={styles.statValue}>{itemsLogged}</Text>
-              <Text style={styles.statLabel}>Items Logged</Text>
+              <Text style={styles.statLabel}>{t('home.itemsLogged')}</Text>
             </Card>
           )}
           <Card style={styles.statCard}>
             <Text style={styles.statValue}>{pickupsScheduled}</Text>
-            <Text style={styles.statLabel}>{user?.role === 'admin' ? 'Pending Pickups' : 'Pickups Setup'}</Text>
+            <Text style={styles.statLabel}>{user?.role === 'admin' ? t('home.pendingPickups') : t('home.pickupsSetup')}</Text>
           </Card>
           <Card style={styles.statCard}>
             <Text style={styles.statValue}>{co2Saved}</Text>
-            <Text style={styles.statLabel}>CO₂ Saved (kg)</Text>
+            <Text style={styles.statLabel}>{t('home.co2Saved')}</Text>
           </Card>
         </View>
 
@@ -323,34 +330,34 @@ const HomeScreen = ({ navigation }) => {
               style={{ backgroundColor: '#FFF', padding: 15, borderRadius: 12, alignItems: 'center', borderColor: colors.primary, borderWidth: 1, marginBottom: 12 }}
               onPress={() => {
                 const members = allUsers.filter(u => u.societyCode === user.societyCode && u.role === 'member');
-                Alert.alert('Society Members', members.length > 0 ? members.map(m => `• ${m.name} (${m.email})`).join('\n') : 'No members yet.');
+                Alert.alert(t('home.societyMembers'), members.length > 0 ? members.map(m => `• ${m.name} (${m.email})`).join('\n') : t('home.noMembers'));
               }}
             >
-              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Manage Society Members</Text>
+              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>{t('home.manageMembers')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={{ backgroundColor: '#E8F5E9', padding: 15, borderRadius: 12, alignItems: 'center', borderColor: '#C8E6C9', borderWidth: 1, marginBottom: 20 }}
               onPress={() => navigation.navigate('MemberActivity')}
             >
-              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>View Member Activity 👥</Text>
+              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>{t('home.viewMemberActivity')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {user?.role === 'member' && (
           <>
-            <Text style={styles.sectionTitle}>Your Recent Activity</Text>
+            <Text style={styles.sectionTitle}>{t('home.recentActivity')}</Text>
             <Card style={styles.activityCard}>
               {personalActivity.length === 0 ? (
-                <Text style={styles.emptyText}>No recent activity yet.</Text>
+                <Text style={styles.emptyText}>{t('home.noActivity')}</Text>
               ) : (
                 personalActivity.slice(0, 3).map((act, index) => (
                   <View key={act.id} style={[styles.activityItem, index < (Math.min(personalActivity.length, 3) - 1) && styles.activityItemBorder]}>
                     <MaterialCommunityIcons name="check-circle-outline" size={24} color={colors.primary} />
                     <View style={styles.activityTextContainer}>
-                      <Text style={styles.activityTitle}>{act.title}</Text>
-                      <Text style={styles.activityDate}>{new Date(act.date).toLocaleDateString()}</Text>
+                      <Text style={styles.activityTitle}>{t('home.loggedItems', { count: act.itemCount, kg: act.totalKg })}</Text>
+                      <Text style={styles.activityDate}>{new Date(act.date).toLocaleDateString(getLocale())}</Text>
                     </View>
                   </View>
                 ))

@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
+import { useTranslation } from '../i18n';
 
 // Screens
 import LoginScreen from '../screens/LoginScreen';
@@ -30,7 +31,20 @@ import WardDashboardScreen from '../screens/WardDashboardScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Route names stay in English for navigation; only the visible labels are translated
+const TAB_LABEL_KEYS = {
+  'Home': 'tabs.home',
+  'Calculator': 'tabs.calculator',
+  'Exchange': 'tabs.exchange',
+  'Vendors': 'tabs.vendors',
+  'Community': 'tabs.community',
+  'Society Points': 'tabs.societyPoints',
+  'Dashboard': 'tabs.dashboard',
+  'Verify': 'tabs.verify'
+};
+
 const AdminTabs = () => {
+  const { t } = useTranslation();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -43,6 +57,7 @@ const AdminTabs = () => {
           else if (route.name === 'Community') iconName = 'account-group';
           return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
         },
+        tabBarLabel: t(TAB_LABEL_KEYS[route.name]),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: 'gray',
         headerShown: false,
@@ -58,6 +73,7 @@ const AdminTabs = () => {
 };
 
 const MemberTabs = () => {
+  const { t } = useTranslation();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -69,6 +85,7 @@ const MemberTabs = () => {
           else if (route.name === 'Community') iconName = 'account-group';
           return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
         },
+        tabBarLabel: t(TAB_LABEL_KEYS[route.name]),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: 'gray',
         headerShown: false,
@@ -83,6 +100,7 @@ const MemberTabs = () => {
 };
 
 const OfficialTabs = () => {
+  const { t } = useTranslation();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -90,6 +108,7 @@ const OfficialTabs = () => {
           const iconName = route.name === 'Dashboard' ? 'view-dashboard' : 'shield-check';
           return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
         },
+        tabBarLabel: t(TAB_LABEL_KEYS[route.name]),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: 'gray',
         headerShown: false,

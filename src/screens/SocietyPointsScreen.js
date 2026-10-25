@@ -6,9 +6,13 @@ import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
+import { useTranslation, getLocale } from '../i18n';
+import { translatePlasticList } from '../services/pickupService';
+import { translateRewardName } from '../services/rewards';
 
 const SocietyPointsScreen = () => {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [points, setPoints] = useState(0);
   const [societySubmissions, setSocietySubmissions] = useState([]);
   const [societyRedemptions, setSocietyRedemptions] = useState([]);
@@ -45,53 +49,53 @@ const SocietyPointsScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="star-circle" size={24} color={colors.primary} />
-        <Text style={styles.headerTitle}>Society Points</Text>
+        <Text style={styles.headerTitle}>{t('societyPoints.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {isLoading && <ActivityIndicator size="large" color={colors.primary} style={{marginBottom: 15}} />}
         <View style={styles.balanceContainer}>
-          <Text style={styles.balanceLabel}>Society Balance</Text>
+          <Text style={styles.balanceLabel}>{t('societyPoints.balance')}</Text>
           <View style={styles.pointsRow}>
             <MaterialCommunityIcons name="star-circle" size={36} color="#FFD700" />
-            <Text style={styles.balanceValue}>{points} pts</Text>
+            <Text style={styles.balanceValue}>{t('common.pts', { value: points })}</Text>
           </View>
         </View>
 
         <Card style={{ marginBottom: 20, backgroundColor: '#E8F5E9' }}>
           <Text style={{ textAlign: 'center', color: colors.primary, fontWeight: 'bold' }}>
-            Points are managed by your society admin.
+            {t('societyPoints.managedByAdmin')}
           </Text>
         </Card>
 
-        <Text style={styles.sectionTitle}>Submission History</Text>
+        <Text style={styles.sectionTitle}>{t('societyPoints.submissionHistory')}</Text>
         {societySubmissions.length === 0 ? (
-          <Text style={styles.emptyText}>No submissions logged yet.</Text>
+          <Text style={styles.emptyText}>{t('societyPoints.noSubmissions')}</Text>
         ) : (
           societySubmissions.map(sub => (
             <Card key={sub.id} style={styles.historyCard}>
               <View style={styles.historyHeader}>
-                <Text style={styles.historyType}>{sub.plasticType || sub.type}</Text>
-                <Text style={styles.historyPoints}>{(sub.pointsEarned ?? sub.points) >= 0 ? '+' : ''}{sub.pointsEarned ?? sub.points} pts</Text>
+                <Text style={styles.historyType}>{translatePlasticList(sub.plasticType || sub.type)}</Text>
+                <Text style={styles.historyPoints}>{t('common.pts', { value: `${(sub.pointsEarned ?? sub.points) >= 0 ? '+' : ''}${sub.pointsEarned ?? sub.points}` })}</Text>
               </View>
               <Text style={styles.historyDate}>
-                {(sub.date?.toDate ? sub.date.toDate() : new Date(sub.date)).toLocaleDateString()} - {Number(sub.kg || 0).toFixed(2)} kg{sub.source === 'verified_pickup' ? ' • BMC verified ✅' : ''}
+                {(sub.date?.toDate ? sub.date.toDate() : new Date(sub.date)).toLocaleDateString(getLocale())} - {Number(sub.kg || 0).toFixed(2)} kg{sub.source === 'verified_pickup' ? ` • ${t('exchange.verified')}` : ''}
               </Text>
             </Card>
           ))
         )}
 
-        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Redeemed Rewards</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>{t('societyPoints.redeemed')}</Text>
         {societyRedemptions.length === 0 ? (
-          <Text style={styles.emptyText}>No rewards redeemed yet.</Text>
+          <Text style={styles.emptyText}>{t('societyPoints.noRedeemed')}</Text>
         ) : (
           societyRedemptions.map(r => (
             <Card key={r.id} style={styles.historyCard}>
               <View style={styles.historyHeader}>
-                <Text style={styles.historyType}>{r.rewardName}</Text>
-                <Text style={{ ...styles.historyPoints, color: colors.error }}>-{r.pointsSpent} pts</Text>
+                <Text style={styles.historyType}>{translateRewardName(r.rewardName)}</Text>
+                <Text style={{ ...styles.historyPoints, color: colors.error }}>{t('common.pts', { value: -r.pointsSpent })}</Text>
               </View>
-              <Text style={styles.historyDate}>{new Date(r.date).toLocaleDateString()}</Text>
+              <Text style={styles.historyDate}>{(r.date?.toDate ? r.date.toDate() : new Date(r.date)).toLocaleDateString(getLocale())}</Text>
             </Card>
           ))
         )}

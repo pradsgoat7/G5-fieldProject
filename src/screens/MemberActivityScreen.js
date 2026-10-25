@@ -6,9 +6,18 @@ import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
+import { useTranslation, getLocale, translateRating } from '../i18n';
+
+const STATUS_LABEL_KEYS = {
+  never: 'memberActivity.noEntries',
+  active_this_week: 'memberActivity.activeThisWeek',
+  active_last_week: 'memberActivity.activeLastWeek',
+  inactive: 'memberActivity.inactive'
+};
 
 const MemberActivityScreen = () => {
   const { user } = useContext(AppContext);
+  const { t } = useTranslation();
   const [membersList, setMembersList] = useState([]);
   const [activeCount, setActiveCount] = useState(0);
 
@@ -73,7 +82,6 @@ const MemberActivityScreen = () => {
       
       let status = 'never';
       let badgeColor = '#9E9E9E';
-      let badgeLabel = 'No entries yet';
       let lastDate = null;
       let latestTotal = null;
       let latestRating = null;
@@ -88,14 +96,11 @@ const MemberActivityScreen = () => {
         
         if (status === "active_this_week") {
            badgeColor = colors.success;
-           badgeLabel = 'Active this week ✅';
            activeThisWeek++;
         } else if (status === "active_last_week") {
            badgeColor = colors.ratingGood;
-           badgeLabel = 'Active last week';
         } else {
            badgeColor = colors.error;
-           badgeLabel = 'Inactive ⚠️';
         }
       }
 
@@ -106,8 +111,7 @@ const MemberActivityScreen = () => {
         latestTotal,
         latestRating,
         status,
-        badgeColor,
-        badgeLabel
+        badgeColor
       };
     });
 
@@ -129,22 +133,22 @@ const MemberActivityScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="account-group" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Member Activity Overview</Text>
+        <Text style={styles.headerTitle}>{t('memberActivity.header')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.summarySection}>
-          <Text style={styles.title}>👥 Member Activity</Text>
-          <Text style={styles.subtitle}>Society: {user?.societyName}</Text>
+          <Text style={styles.title}>{t('memberActivity.title')}</Text>
+          <Text style={styles.subtitle}>{t('memberActivity.society', { name: user?.societyName })}</Text>
           <View style={styles.periodBadge}>
-             <Text style={styles.periodText}>{activeCount} of {membersList.length} members active this week</Text>
+             <Text style={styles.periodText}>{t('memberActivity.activeCount', { active: activeCount, total: membersList.length })}</Text>
           </View>
         </View>
 
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
         ) : membersList.length === 0 ? (
-          <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No members joined yet.</Text>
+          <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>{t('memberActivity.noMembers')}</Text>
         ) : (
           membersList.map(member => (
             <Card key={member.uid} style={[styles.memberCard, { borderLeftWidth: 4, borderLeftColor: member.badgeColor }]}>
@@ -155,11 +159,11 @@ const MemberActivityScreen = () => {
 
               <View style={styles.statusRow}>
                  <View style={[styles.badge, { backgroundColor: member.badgeColor }]}>
-                   <Text style={styles.badgeText}>{member.badgeLabel}</Text>
+                   <Text style={styles.badgeText}>{t(STATUS_LABEL_KEYS[member.status] || STATUS_LABEL_KEYS.inactive)}</Text>
                  </View>
                  {member.lastDate && (
                    <Text style={styles.dateText}>
-                     Last logged: {member.lastDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                     {t('memberActivity.lastLogged', { date: member.lastDate.toLocaleDateString(getLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) })}
                    </Text>
                  )}
               </View>
@@ -168,14 +172,14 @@ const MemberActivityScreen = () => {
               
               <View style={styles.statsRow}>
                  <View style={styles.statBox}>
-                   <Text style={styles.statLabel}>Total Entries</Text>
+                   <Text style={styles.statLabel}>{t('memberActivity.totalEntries')}</Text>
                    <Text style={styles.statVal}>{member.entriesCount}</Text>
                  </View>
                  {member.latestTotal !== null && (
                    <View style={styles.statBox}>
-                     <Text style={styles.statLabel}>Latest Footprint</Text>
+                     <Text style={styles.statLabel}>{t('memberActivity.latestFootprint')}</Text>
                      <Text style={styles.statVal}>{member.latestTotal.toFixed(2)} kg</Text>
-                     <Text style={[styles.statSub, { color: colors.primary }]}>{member.latestRating}</Text>
+                     <Text style={[styles.statSub, { color: colors.primary }]}>{translateRating(member.latestRating)}</Text>
                    </View>
                  )}
               </View>

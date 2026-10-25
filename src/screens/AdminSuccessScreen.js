@@ -5,14 +5,16 @@ import * as Clipboard from 'expo-clipboard';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import { colors } from '../theme/colors';
+import { useTranslation } from '../i18n';
 
 const AdminSuccessScreen = ({ route, navigation }) => {
   const { societyCode } = route.params || {};
+  const { t } = useTranslation();
 
   const handleCopyCode = async () => {
     if (societyCode) {
       await Clipboard.setStringAsync(societyCode);
-      Alert.alert('Copied!', 'Society code copied to clipboard.', [{ text: 'OK' }]);
+      Alert.alert(t('common.copied'), t('common.copiedCode'), [{ text: t('common.ok') }]);
     }
   };
 
@@ -24,24 +26,24 @@ const AdminSuccessScreen = ({ route, navigation }) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <MaterialCommunityIcons name="check-circle" size={80} color={colors.primary} style={styles.icon} />
-        <Text style={styles.title}>Society Created Successfully!</Text>
+        <Text style={styles.title}>{t('adminSuccess.title')}</Text>
         
         <Card style={styles.card}>
-          <Text style={styles.cardSubtitle}>YOUR SOCIETY CODE</Text>
+          <Text style={styles.cardSubtitle}>{t('adminSuccess.codeLabel')}</Text>
           <Text style={styles.codeText}>[ {societyCode} ]</Text>
           
           <TouchableOpacity style={styles.copyButton} onPress={handleCopyCode}>
             <MaterialCommunityIcons name="content-copy" size={20} color={colors.primary} />
-            <Text style={styles.copyButtonText}>Tap to Copy</Text>
+            <Text style={styles.copyButtonText}>{t('adminSuccess.tapToCopy')}</Text>
           </TouchableOpacity>
         </Card>
 
         <Text style={styles.subtext}>
-          Share this code with your residents so they can register as Members of your society.
+          {t('adminSuccess.share')}
         </Text>
 
         <Button 
-          title="Proceed to Login" 
+          title={t('adminSuccess.proceed')} 
           onPress={handleProceed} 
           style={styles.proceedButton}
         />

@@ -10,9 +10,12 @@ import { StatusBadge } from '../components/PickupDetails';
 import { WardSetupCard } from '../components/WardPicker';
 import { PICKUP_STATUS, formatDate, formatTimestamp } from '../services/pickupService';
 import { getWardLabel } from '../services/wards';
+import { useTranslation } from '../i18n';
+import LanguageToggle from '../components/LanguageToggle';
 
 const OfficialHomeScreen = ({ navigation }) => {
   const { user, logout } = useContext(AppContext);
+  const { t } = useTranslation();
   const [tab, setTab] = useState('pending');
   const [pending, setPending] = useState([]);
   const [history, setHistory] = useState([]);
@@ -62,27 +65,30 @@ const OfficialHomeScreen = ({ navigation }) => {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <MaterialCommunityIcons name="shield-check" size={28} color={colors.primary} />
-          <Text style={styles.headerTitle}>BMC Verification</Text>
+          <Text style={styles.headerTitle}>{t('official.title')}</Text>
         </View>
-        <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
-          <MaterialCommunityIcons name="logout" size={26} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <LanguageToggle style={{ marginRight: 8 }} />
+          <TouchableOpacity onPress={logout} style={{ padding: 5 }}>
+            <MaterialCommunityIcons name="logout" size={26} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.greeting}>Hello, {user?.name}</Text>
-        <Text style={styles.subtitle}>{user?.organization} • BMC Official • {getWardLabel(user?.ward)}</Text>
+        <Text style={styles.greeting}>{t('vendorHome.hello', { name: user?.name })}</Text>
+        <Text style={styles.subtitle}>{t('official.subtitle', { organization: user?.organization, ward: getWardLabel(user?.ward) })}</Text>
 
         {!user?.ward && (
-          <WardSetupCard message="Select the ward you oversee. You will only see and verify collections from societies in that ward." />
+          <WardSetupCard message={t('ward.setupOfficialVerify')} />
         )}
 
         <View style={styles.tabs}>
           <TouchableOpacity style={[styles.tab, tab === 'pending' && styles.tabActive]} onPress={() => setTab('pending')}>
-            <Text style={[styles.tabText, tab === 'pending' && styles.tabTextActive]}>To Verify ({myPending.length})</Text>
+            <Text style={[styles.tabText, tab === 'pending' && styles.tabTextActive]}>{t('official.toVerify', { count: myPending.length })}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.tab, tab === 'history' && styles.tabActive]} onPress={() => setTab('history')}>
-            <Text style={[styles.tabText, tab === 'history' && styles.tabTextActive]}>Verified by Me ({history.length})</Text>
+            <Text style={[styles.tabText, tab === 'history' && styles.tabTextActive]}>{t('official.verifiedByMe', { count: history.length })}</Text>
           </TouchableOpacity>
         </View>
 
@@ -90,7 +96,7 @@ const OfficialHomeScreen = ({ navigation }) => {
           <ActivityIndicator size="large" color={colors.primary} />
         ) : list.length === 0 ? (
           <Text style={styles.emptyText}>
-            {tab === 'pending' ? 'No collections waiting for verification.' : 'You have not verified any collections yet.'}
+            {tab === 'pending' ? t('official.noPending') : t('official.noHistory')}
           </Text>
         ) : (
           list.map(p => (
@@ -100,13 +106,13 @@ const OfficialHomeScreen = ({ navigation }) => {
                   <Text style={styles.societyName}>{p.societyName}</Text>
                   <StatusBadge status={p.status} />
                 </View>
-                {!societyWards[p.societyCode] && <Text style={styles.wardWarning}>⚠️ Society has not set its ward yet</Text>}
-                <Text style={styles.detail}>Vendor: {p.vendorName}</Text>
+                {!societyWards[p.societyCode] && <Text style={styles.wardWarning}>{t('official.wardNotSet')}</Text>}
+                <Text style={styles.detail}>{t('official.vendor', { name: p.vendorName })}</Text>
                 <Text style={styles.detail}>
-                  {(p.totalKg || 0).toFixed(2)} kg • Grade {p.grade} • {p.location ? '📍 Located' : '⚠️ No location'}
+                  {t('official.summary', { kg: (p.totalKg || 0).toFixed(2), grade: p.grade })} • {p.location ? t('official.located') : t('official.noLocation')}
                 </Text>
                 <Text style={styles.detail}>
-                  {tab === 'pending' ? `Weighed ${formatTimestamp(p.weighedAt)}` : `Verified ${formatTimestamp(p.verifiedAt)}`} • Pickup {formatDate(p.scheduledDate)}
+                  {tab === 'pending' ? t('official.weighedAt', { time: formatTimestamp(p.weighedAt) }) : t('official.verifiedAt', { time: formatTimestamp(p.verifiedAt) })} • {t('official.pickupOn', { date: formatDate(p.scheduledDate) })}
                 </Text>
               </Card>
             </TouchableOpacity>

@@ -3,34 +3,20 @@ import { View, Text, StyleSheet, SafeAreaView, Dimensions, FlatList, TouchableOp
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import * as storage from '../services/storageService';
+import { useTranslation } from '../i18n';
+import LanguageToggle from '../components/LanguageToggle';
 
 const { width, height } = Dimensions.get('window');
 
+// Slide text lives in the translation files under onboarding.slide<id>
 const SLIDES = [
-  {
-    id: '1',
-    title: 'Track Your Plastic',
-    description: 'Log the plastic you use every day and understand your environmental footprint — one item at a time.',
-    icon: 'earth',
-    bgTint: '#F1F8E9'
-  },
-  {
-    id: '2',
-    title: 'Earn Rewards',
-    description: 'Submit plastic waste for recycling and earn points for your society. Redeem them for real benefits like bill discounts and certificates.',
-    icon: 'star',
-    bgTint: '#FFFDE7'
-  },
-  {
-    id: '3',
-    title: 'Build a Greener Community',
-    description: 'Join weekly challenges, climb the society leaderboard, and work together to reduce plastic waste in your neighborhood.',
-    icon: 'handshake-outline',
-    bgTint: '#E3F2FD'
-  }
+  { id: '1', icon: 'earth', bgTint: '#F1F8E9' },
+  { id: '2', icon: 'star', bgTint: '#FFFDE7' },
+  { id: '3', icon: 'handshake-outline', bgTint: '#E3F2FD' }
 ];
 
 const OnboardingScreen = ({ navigation, onComplete }) => {
+  const { t } = useTranslation();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef(null);
 
@@ -63,8 +49,8 @@ const OnboardingScreen = ({ navigation, onComplete }) => {
           <View style={styles.iconContainer}>
             <MaterialCommunityIcons name={item.icon} size={120} color={colors.primary} />
           </View>
-          <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.description}>{item.description}</Text>
+          <Text style={styles.title}>{t(`onboarding.slide${item.id}.title`)}</Text>
+          <Text style={styles.description}>{t(`onboarding.slide${item.id}.description`)}</Text>
         </View>
       </View>
     );
@@ -73,9 +59,10 @@ const OnboardingScreen = ({ navigation, onComplete }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
+         <LanguageToggle />
          {currentIndex < SLIDES.length - 1 ? (
             <TouchableOpacity onPress={handleFinish}>
-               <Text style={styles.skipText}>Skip</Text>
+               <Text style={styles.skipText}>{t('onboarding.skip')}</Text>
             </TouchableOpacity>
          ) : <View />}
       </View>
@@ -101,11 +88,11 @@ const OnboardingScreen = ({ navigation, onComplete }) => {
 
         {currentIndex === SLIDES.length - 1 ? (
           <TouchableOpacity style={styles.getStartedBtn} onPress={handleFinish}>
-            <Text style={styles.getStartedText}>Get Started 🌿</Text>
+            <Text style={styles.getStartedText}>{t('onboarding.getStarted')}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-            <Text style={styles.nextText}>Next →</Text>
+            <Text style={styles.nextText}>{t('onboarding.next')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -120,8 +107,9 @@ const styles = StyleSheet.create({
   },
   topBar: {
     height: 50,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
     zIndex: 1,
     position: 'absolute',

@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, increment, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
+import { translate as t } from '../i18n';
 
 export const AppContext = createContext();
 
@@ -47,9 +48,9 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const friendlyAuthError = (error) => {
-    if (error.code === 'auth/email-already-in-use') return 'This email is already registered. Please log in instead.';
-    if (error.code === 'auth/weak-password') return 'Password must be at least 6 characters.';
-    if (error.code === 'auth/invalid-email') return 'Please enter a valid email address.';
+    if (error.code === 'auth/email-already-in-use') return t('auth.emailInUse');
+    if (error.code === 'auth/weak-password') return t('auth.weakPassword');
+    if (error.code === 'auth/invalid-email') return t('auth.invalidEmail');
     return error.message;
   };
 
@@ -110,7 +111,7 @@ export const AppProvider = ({ children }) => {
       const societyDoc = await getDoc(societyDocRef);
 
       if (!societyDoc.exists()) {
-        throw new Error('Invalid society code. Please check with your society admin.');
+        throw new Error(t('auth.invalidSocietyCode'));
       }
 
       const societyData = societyDoc.data();
@@ -154,7 +155,7 @@ export const AppProvider = ({ children }) => {
       const role = inviteDoc.exists() ? inviteDoc.data().role : null;
 
       if (role !== 'vendor' && role !== 'bmc_official') {
-        throw new Error('Invalid invite code. Please check with the PlasticTrack team.');
+        throw new Error(t('auth.invalidInviteCode'));
       }
 
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -199,7 +200,7 @@ export const AppProvider = ({ children }) => {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
       console.error("loginByCredentials error:", error);
-      throw new Error('Invalid email or password.');
+      throw new Error(t('auth.invalidCredentials'));
     }
   };
 

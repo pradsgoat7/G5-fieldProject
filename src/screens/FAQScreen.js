@@ -2,40 +2,17 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, LayoutAnimation, UIManager, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { useTranslation } from '../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const FAQ_DATA = [
-  {
-    id: '1',
-    question: 'How are points calculated?',
-    answer: 'Every 15 days a vendor collects and weighs your society\'s plastic, a BMC official verifies the weighing, and your society admin confirms it. Points are then credited: 15 points per kg of recyclable plastic and 5 points per kg of segregated non-recyclable plastic, multiplied by the segregation grade (A ×1, B ×0.75, C ×0.5).'
-  },
-  {
-    id: '2',
-    question: 'How does the reward system work?',
-    answer: 'Admins can host polls where society members vote on potential rewards, like water bill discounts or free vendor pickups. You can only vote on rewards that your society has enough accumulated points to afford.'
-  },
-  {
-    id: '3',
-    question: 'How is plastic measured and logged?',
-    answer: 'When logging plastic usage, the app uses standard average weights for common items (e.g., a standard PET bottle is ~20g) to calculate your footprint automatically. You can also manually submit exact weights if you have a kitchen scale.'
-  },
-  {
-    id: '4',
-    question: 'How are vendors scheduled?',
-    answer: 'Admins can create a "Vendor Pickup" poll with specific available dates. Once a date wins the majority vote (with at least 40% participation), the admin finalizes it, and the official pickup will appear in your Society Updates feed.'
-  },
-  {
-    id: '5',
-    question: 'What is the dynamic society grading?',
-    answer: 'Your society receives a grade (A, B, or C) based on the "average points earned per household per week". A "C" rating means less than 0.3kg average weekly reduction. This levels the playing field so smaller new societies can fairly compete against larger old ones on the Community Leaderboard.'
-  }
-];
+// Question and answer text lives in the translation files under faq.items
+const FAQ_IDS = ['1', '2', '3', '4', '5'];
 
 const FAQScreen = () => {
+  const { t } = useTranslation();
   const [expandedId, setExpandedId] = useState(null);
 
   const toggleExpand = (id) => {
@@ -47,13 +24,14 @@ const FAQScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="frequently-asked-questions" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Frequently Asked Questions</Text>
+        <Text style={styles.headerTitle}>{t('faq.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.sectionTitle}>General Topics</Text>
+        <Text style={styles.sectionTitle}>{t('faq.general')}</Text>
         
-        {FAQ_DATA.map((item) => {
+        {FAQ_IDS.map((id) => {
+          const item = { id, question: t(`faq.items.${id}.question`), answer: t(`faq.items.${id}.answer`) };
           const isExpanded = expandedId === item.id;
           return (
             <TouchableOpacity 
@@ -81,7 +59,7 @@ const FAQScreen = () => {
 
         <View style={styles.footerContainer}>
            <MaterialCommunityIcons name="leaf" size={40} color={colors.secondary} />
-           <Text style={styles.footerText}>More questions? Reach out to your local society admin.</Text>
+           <Text style={styles.footerText}>{t('faq.footer')}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
