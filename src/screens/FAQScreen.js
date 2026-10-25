@@ -11,7 +11,7 @@ const FAQ_DATA = [
   {
     id: '1',
     question: 'How are points calculated?',
-    answer: 'Points are awarded based on the weight (kg) of plastic items you log or exchange. Different types of plastics have varying multipliers depending on their recyclability. Bonus points are also awarded when your entire society consistently meets recycling thresholds.'
+    answer: 'Every 15 days a vendor collects and weighs your society\'s plastic, a BMC official verifies the weighing, and your society admin confirms it. Points are then credited: 15 points per kg of recyclable plastic and 5 points per kg of segregated non-recyclable plastic, multiplied by the segregation grade (A ×1, B ×0.75, C ×0.5).'
   },
   {
     id: '2',

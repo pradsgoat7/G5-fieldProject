@@ -132,7 +132,7 @@ const SustainabilityReportScreen = () => {
         <Text style={styles.sectionTitle}>Submission Breakdown</Text>
         <Card style={styles.breakdownCard}>
           <Text style={styles.breakdownText}>♻️ Recyclable:     {stats.totalRecyclableKg.toFixed(1)} kg  →  +{Math.abs(stats.totalRecyclablePoints || 0)} points earned</Text>
-          <Text style={styles.breakdownText}>🚫 Non-Recyclable: {stats.totalNonRecyclableKg.toFixed(1)} kg  →  -{Math.abs(stats.totalNonRecyclablePoints || 0)} points deducted</Text>
+          <Text style={styles.breakdownText}>🚫 Non-Recyclable: {stats.totalNonRecyclableKg.toFixed(1)} kg  →  {(stats.totalNonRecyclablePoints || 0) >= 0 ? '+' : ''}{stats.totalNonRecyclablePoints || 0} points</Text>
           <View style={{ height: 1, backgroundColor: '#E0E0E0', marginVertical: 10 }} />
           <Text style={[styles.breakdownText, { fontWeight: 'bold' }]}>📊 Net Points from Submissions: {stats.pointsEarned} points</Text>
         </Card>

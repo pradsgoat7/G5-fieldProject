@@ -21,6 +21,10 @@ import MemberActivityScreen from '../screens/MemberActivityScreen';
 import VotingScreen from '../screens/VotingScreen';
 import UpdatesScreen from '../screens/UpdatesScreen';
 import FAQScreen from '../screens/FAQScreen';
+import VendorHomeScreen from '../screens/VendorHomeScreen';
+import WeighPickupScreen from '../screens/WeighPickupScreen';
+import OfficialHomeScreen from '../screens/OfficialHomeScreen';
+import PickupReviewScreen from '../screens/PickupReviewScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -77,6 +81,13 @@ const MemberTabs = () => {
   );
 };
 
+const MAIN_BY_ROLE = {
+  admin: AdminTabs,
+  member: MemberTabs,
+  vendor: VendorHomeScreen,
+  bmc_official: OfficialHomeScreen
+};
+
 const AppNavigator = () => {
   const { isAuthenticated, isLoading, user } = useContext(AppContext);
 
@@ -97,13 +108,15 @@ const AppNavigator = () => {
         </>
       ) : (
         <>
-          <Stack.Screen name="Main" component={user?.role === 'admin' ? AdminTabs : MemberTabs} />
+          <Stack.Screen name="Main" component={MAIN_BY_ROLE[user?.role] || MemberTabs} />
           <Stack.Screen name="Rewards" component={RewardsScreen} />
           <Stack.Screen name="SustainabilityReport" component={SustainabilityReportScreen} />
           <Stack.Screen name="MemberActivity" component={MemberActivityScreen} />
           <Stack.Screen name="CommunityVoting" component={VotingScreen} />
           <Stack.Screen name="Updates" component={UpdatesScreen} />
           <Stack.Screen name="FAQ" component={FAQScreen} />
+          <Stack.Screen name="WeighPickup" component={WeighPickupScreen} />
+          <Stack.Screen name="PickupReview" component={PickupReviewScreen} />
         </>
       )}
     </Stack.Navigator>

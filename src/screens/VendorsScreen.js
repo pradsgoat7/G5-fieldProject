@@ -1,61 +1,38 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, increment, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, getDocs, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { AppContext } from '../context/AppContext';
 import { colors } from '../theme/colors';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { StatusBadge } from '../components/PickupDetails';
+import { showMessage, askConfirm } from '../services/dialogs';
+import {
+  PICKUP_STATUS, PICKUP_INTERVAL_DAYS, toDateString, addDays, daysUntil, describeCountdown, formatDate
+} from '../services/pickupService';
 
-const VENDORS = [
-  { id: '1', name: 'GreenCycle Recyclers', rating: '4.8' },
-  { id: '2', name: 'EcoPickup Services', rating: '4.5' },
-  { id: '3', name: 'CleanEarth Waste Mgmt', rating: '4.6' }
-];
-
-const RECYCLABLE_TYPES = [
-  { id: 'pet', name: 'PET Bottles' },
-  { id: 'hdpe', name: 'HDPE Containers' },
-  { id: 'ldpe', name: 'LDPE Bags' },
-  { id: 'pp', name: 'PP Containers' },
-  { id: 'glass', name: 'Glass Bottles' },
-  { id: 'cardboard', name: 'Cardboard / Paper' },
-  { id: 'metal', name: 'Metal Cans' }
-];
-
-const NON_RECYCLABLE_TYPES = [
-  { id: 'mlp', name: 'MLP Packaging' },
-  { id: 'thermocol', name: 'Thermocol / EPS' },
-  { id: 'pvc', name: 'PVC Plastic' },
-  { id: 'contaminated', name: 'Contaminated Plastic' },
-  { id: 'composite', name: 'Composite Packaging' },
-  { id: 'cutlery', name: 'Disposable Cutlery' },
-  { id: 'thin_film', name: 'Thin Plastic Films' }
-];
 const TIME_SLOTS = ['Morning (8am-12pm)', 'Afternoon (12pm-4pm)', 'Evening (4pm-7pm)'];
+const ACTIVE_STATUSES = [PICKUP_STATUS.SCHEDULED, PICKUP_STATUS.WEIGHED, PICKUP_STATUS.VERIFIED];
 
-const VendorsScreen = () => {
+const VendorsScreen = ({ navigation }) => {
   const { user } = useContext(AppContext);
-  const [vendor, setVendor] = useState(VENDORS[0].name);
-  const [recyclableTypes, setRecyclableTypes] = useState([]);
-  const [nonRecyclableTypes, setNonRecyclableTypes] = useState([]);
-  const [kg, setKg] = useState('');
+  const [vendors, setVendors] = useState([]);
+  const [vendorUid, setVendorUid] = useState(null);
+  const [pickupDate, setPickupDate] = useState(toDateString(new Date()));
   const [timeSlot, setTimeSlot] = useState(TIME_SLOTS[0]);
   const [instructions, setInstructions] = useState('');
   const [societyPickups, setSocietyPickups] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isScheduling, setIsScheduling] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, "pickups"),
-      where("societyCode", "==", user.societyCode),
-      orderBy("date", "desc")
-    );
+    const q = query(collection(db, "pickups"), where("societyCode", "==", user.societyCode));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-      setSocietyPickups(data);
+      setSocietyPickups(data.sort((a, b) => (b.scheduledDate || b.date || '').localeCompare(a.scheduledDate || a.date || '')));
       setIsLoading(false);
     }, (error) => {
       console.log("Error fetching pickups", error);
@@ -64,47 +41,45 @@ const VendorsScreen = () => {
     return () => unsubscribe();
   }, [user]);
 
-  const toggleRecyclable = (name) => {
-    if (recyclableTypes.includes(name)) {
-      setRecyclableTypes(recyclableTypes.filter(i => i !== name));
-    } else {
-      setRecyclableTypes([...recyclableTypes, name]);
-    }
-  };
+  useEffect(() => {
+    getDocs(query(collection(db, "users"), where("role", "==", "vendor")))
+      .then((snapshot) => {
+        const data = snapshot.docs.map(d => d.data());
+        setVendors(data);
+        if (data.length > 0) setVendorUid(data[0].uid);
+      })
+      .catch((e) => console.log("Error fetching vendors", e));
+  }, []);
 
-  const toggleNonRecyclable = (name) => {
-    if (nonRecyclableTypes.includes(name)) {
-      setNonRecyclableTypes(nonRecyclableTypes.filter(i => i !== name));
-    } else {
-      setNonRecyclableTypes([...nonRecyclableTypes, name]);
-    }
+  // Pickups created before vendor accounts existed have no vendorUid and can't be weighed
+  const activePickup = societyPickups.find(p => ACTIVE_STATUSES.includes(p.status) && p.vendorUid);
+  const pastPickups = societyPickups.filter(p => p !== activePickup);
+
+  const shiftDate = (days) => {
+    const next = addDays(pickupDate, days);
+    if (daysUntil(next) >= 0) setPickupDate(next);
   };
 
   const schedulePickup = async () => {
-    if (!kg || (recyclableTypes.length === 0 && nonRecyclableTypes.length === 0)) {
-      Alert.alert('Error', 'Please enter estimated quantity and select at least one plastic type.');
-      return;
+    const vendor = vendors.find(v => v.uid === vendorUid);
+    if (!vendor) {
+      return showMessage('No vendor selected', 'Select a registered vendor for the collection.');
     }
-
-    const mergedTypes = [...recyclableTypes, ...nonRecyclableTypes];
-
+    setIsScheduling(true);
     try {
+      const vendorName = `${vendor.name} (${vendor.organization})`;
       await addDoc(collection(db, "pickups"), {
         societyCode: user.societyCode,
-        vendorName: vendor,
-        vendor: vendor, // keeping vendor property for UI compatibility
-        recyclableTypes,
-        nonRecyclableTypes,
-        plasticTypes: mergedTypes,
-        type: mergedTypes.join(', '), // compatibility
-        estimatedKg: parseFloat(kg),
-        kg: parseFloat(kg), // compatibility
-        date: new Date().toISOString().split('T')[0], // compatibility
-        pickupDate: serverTimestamp(),
-        timeSlot: timeSlot,
+        societyName: user.societyName,
         address: user.societyName,
-        instructions: instructions,
-        status: 'Scheduled',
+        vendorUid: vendor.uid,
+        vendorName,
+        vendor: vendorName, // compatibility
+        scheduledDate: pickupDate,
+        date: pickupDate, // compatibility
+        timeSlot,
+        instructions,
+        status: PICKUP_STATUS.SCHEDULED,
         scheduledBy: user.uid,
         createdAt: serverTimestamp()
       });
@@ -113,181 +88,171 @@ const VendorsScreen = () => {
         societyCode: user.societyCode,
         type: 'activity',
         title: 'Pickup Scheduled',
-        description: `Scheduled pickup with ${vendor}`,
+        description: `Collection by ${vendorName} on ${formatDate(pickupDate)}`,
         timestamp: Date.now()
       });
 
-      Alert.alert(
-        'Pickup Scheduled!',
-        "You'll earn bonus points on completion.",
-        [{ text: 'OK' }]
-      );
-
-      setKg('');
+      showMessage('Pickup Scheduled!', 'Points are credited after the vendor weighs it, a BMC official verifies it and you confirm.');
       setInstructions('');
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', 'Could not schedule pickup. Check your connection.');
+      showMessage('Error', 'Could not schedule pickup. Check your connection.');
+    } finally {
+      setIsScheduling(false);
     }
   };
 
-  const getStatusColor = (status) => {
-    if (status === 'Completed') return colors.success;
-    if (status === 'Cancelled') return colors.error;
-    return colors.warning; // Scheduled
+  const cancelPickup = async (p) => {
+    const ok = await askConfirm('Cancel pickup?', `Cancel the collection on ${formatDate(p.scheduledDate || p.date)}?`, 'Cancel Pickup');
+    if (!ok) return;
+    try {
+      await updateDoc(doc(db, "pickups", p.id), { status: PICKUP_STATUS.CANCELLED });
+    } catch (e) {
+      console.error(e);
+      showMessage('Error', 'Could not cancel pickup.');
+    }
   };
+
+  const renderActivePickup = (p) => {
+    const days = daysUntil(p.scheduledDate);
+    return (
+      <Card style={styles.formCard}>
+        <View style={styles.pickupHeader}>
+          <Text style={styles.vendorName}>Next Collection</Text>
+          <StatusBadge status={p.status} />
+        </View>
+        <Text style={styles.pickupDetail}>Vendor: {p.vendorName}</Text>
+        <Text style={styles.pickupDetail}>Date: {formatDate(p.scheduledDate)} • {p.timeSlot}</Text>
+        {p.status === PICKUP_STATUS.SCHEDULED && (
+          <Text style={[styles.countdown, days < 0 && { color: colors.error }]}>{describeCountdown(p.scheduledDate)}</Text>
+        )}
+        {p.status === PICKUP_STATUS.SCHEDULED && p.lastRejection && (
+          <Text style={styles.rejection}>Sent back by {p.lastRejection.byName}: {p.lastRejection.reason}</Text>
+        )}
+        {p.status === PICKUP_STATUS.WEIGHED && (
+          <Text style={styles.pickupDetail}>Weighed: {(p.totalKg || 0).toFixed(2)} kg. Waiting for the BMC official to verify.</Text>
+        )}
+        {p.status === PICKUP_STATUS.VERIFIED && (
+          <Text style={styles.pickupDetail}>Verified by {p.verifiedByName} (BMC). Please review and confirm.</Text>
+        )}
+
+        {p.status === PICKUP_STATUS.VERIFIED ? (
+          <Button title="Review & Confirm" onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })} style={{ marginTop: 15 }} />
+        ) : p.status === PICKUP_STATUS.WEIGHED ? (
+          <Button title="View Details" type="secondary" onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })} style={{ marginTop: 15 }} />
+        ) : (
+          <Button title="Cancel Pickup" type="secondary" onPress={() => cancelPickup(p)} style={{ marginTop: 15 }} />
+        )}
+      </Card>
+    );
+  };
+
+  const renderScheduleForm = () => (
+    <Card style={styles.formCard}>
+      <Text style={styles.label}>Select Vendor</Text>
+      {vendors.length === 0 ? (
+        <Text style={styles.pickupDetail}>No vendors have registered yet. Vendors sign up with the vendor invite code.</Text>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          {vendors.map(v => (
+            <TouchableOpacity
+              key={v.uid}
+              style={[styles.pill, vendorUid === v.uid && styles.pillSelected]}
+              onPress={() => setVendorUid(v.uid)}
+            >
+              <Text style={[styles.pillText, vendorUid === v.uid && styles.pillTextSelected]}>
+                {v.organization} ({v.name})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      <Text style={styles.label}>Pickup Date</Text>
+      <View style={styles.dateRow}>
+        <TouchableOpacity onPress={() => shiftDate(-1)} style={styles.dateButton}>
+          <MaterialCommunityIcons name="chevron-left" size={24} color={colors.primary} />
+        </TouchableOpacity>
+        <Text style={styles.dateText}>{formatDate(pickupDate)}</Text>
+        <TouchableOpacity onPress={() => shiftDate(1)} style={styles.dateButton}>
+          <MaterialCommunityIcons name="chevron-right" size={24} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.label}>Preferred Time Slot</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+        {TIME_SLOTS.map(t => (
+          <TouchableOpacity
+            key={t}
+            style={[styles.pill, timeSlot === t && styles.pillSelected]}
+            onPress={() => setTimeSlot(t)}
+          >
+            <Text style={[styles.pillText, timeSlot === t && styles.pillTextSelected]}>{t}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <Text style={styles.label}>Society Address</Text>
+      <View style={styles.readOnlyInput}>
+        <Text style={styles.readOnlyText}>{user?.societyName}</Text>
+      </View>
+
+      <Text style={styles.label}>Special Instructions</Text>
+      <TextInput
+        style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+        multiline
+        placeholder="Collection point, gate number, etc."
+        value={instructions}
+        onChangeText={setInstructions}
+      />
+
+      <Button
+        title={isScheduling ? 'Scheduling...' : 'Schedule Pickup'}
+        onPress={schedulePickup}
+        disabled={isScheduling || vendors.length === 0}
+        style={{ marginTop: 15 }}
+      />
+    </Card>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="truck-delivery" size={28} color={colors.primary} />
-        <Text style={styles.headerTitle}>Schedule a Pickup</Text>
+        <Text style={styles.headerTitle}>Vendor Pickups</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.subtitle}>Connect with authorized recycling vendors</Text>
+        <Text style={styles.subtitle}>
+          Collections happen every {PICKUP_INTERVAL_DAYS} days. The vendor weighs your plastic, a BMC official verifies it, and you confirm before points are credited.
+        </Text>
 
-        <Card style={styles.formCard}>
-          <Text style={styles.label}>Select Vendor</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {VENDORS.map(v => (
-              <TouchableOpacity
-                key={v.id}
-                style={[styles.pill, vendor === v.name && styles.pillSelected]}
-                onPress={() => setVendor(v.name)}
-              >
-                <Text style={[styles.pillText, vendor === v.name && styles.pillTextSelected]}>
-                  {v.name} ({v.rating}★)
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.label}>Recyclable Plastics (Multi-select)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {RECYCLABLE_TYPES.map(t => (
-              <TouchableOpacity
-                key={t.id}
-                style={[styles.pill, recyclableTypes.includes(t.name) && styles.pillSelectedRecyclable]}
-                onPress={() => toggleRecyclable(t.name)}
-              >
-                <Text style={[styles.pillText, recyclableTypes.includes(t.name) && styles.pillTextSelected]}>
-                  {t.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.label}>Non-Recyclable Plastics (Multi-select)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {NON_RECYCLABLE_TYPES.map(t => (
-              <TouchableOpacity
-                key={t.id}
-                style={[styles.pill, nonRecyclableTypes.includes(t.name) && styles.pillSelectedNonRecyclable]}
-                onPress={() => toggleNonRecyclable(t.name)}
-              >
-                <Text style={[styles.pillText, nonRecyclableTypes.includes(t.name) && styles.pillTextSelected]}>
-                  {t.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.label}>Estimated Quantity (kg)</Text>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            placeholder="e.g. 5"
-            value={kg}
-            onChangeText={setKg}
-          />
-
-          <Text style={styles.label}>Preferred Time Slot</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {TIME_SLOTS.map(t => (
-              <TouchableOpacity
-                key={t}
-                style={[styles.pill, timeSlot === t && styles.pillSelected]}
-                onPress={() => setTimeSlot(t)}
-              >
-                <Text style={[styles.pillText, timeSlot === t && styles.pillTextSelected]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.label}>Society Address</Text>
-          <View style={styles.readOnlyInput}>
-            <Text style={styles.readOnlyText}>{user?.societyName}</Text>
-          </View>
-
-          <Text style={styles.label}>Special Instructions</Text>
-          <TextInput
-            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-            multiline
-            placeholder="Apartment number, gate code, etc."
-            value={instructions}
-            onChangeText={setInstructions}
-          />
-
-          <Button title="Schedule Pickup" onPress={schedulePickup} style={{ marginTop: 15 }} />
-        </Card>
-
-        <Text style={styles.sectionTitle}>My Scheduled Pickups</Text>
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary} />
-        ) : societyPickups.length === 0 ? (
-          <Text style={styles.emptyText}>No pickups yet. Schedule your first one!</Text>
-        ) : (
-          societyPickups.map(p => (
-            <Card key={p.id}>
-              <View style={styles.pickupHeader}>
-                <Text style={styles.vendorName}>{p.vendor}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(p.status) }]}>
-                  <Text style={styles.statusText}>{p.status}</Text>
-                </View>
-              </View>
-              <Text style={styles.pickupDetail}>Date: {p.date}</Text>
-              <Text style={styles.pickupDetail}>Items: {p.kg} kg of {p.type}</Text>
+        ) : activePickup ? renderActivePickup(activePickup) : renderScheduleForm()}
 
-              {p.status === 'Scheduled' && (
-                <View style={{ flexDirection: 'row', marginTop: 15 }}>
-                  <Button title="Mark Complete" type="primary" onPress={async () => {
-                     try {
-                       await updateDoc(doc(db, "pickups", p.id), { status: 'Completed' });
-                       
-                       await updateDoc(doc(db, "societies", user.societyCode), {
-                         totalPointsEarned: increment(50)
-                       });
-                       await addDoc(collection(db, "exchange_submissions"), {
-                          societyCode: user.societyCode,
-                          plasticType: 'Pickup Bonus',
-                          kg: 0,
-                          pointsEarned: 50,
-                          submittedBy: 'system',
-                          date: serverTimestamp()
-                       });
-                       await addDoc(collection(db, "announcements"), {
-                         societyCode: user.societyCode,
-                         type: 'activity',
-                         title: 'Pickup Completed',
-                         description: `Completed pickup with ${p.vendor}`,
-                         timestamp: Date.now()
-                       });
-                       Alert.alert('Pickup completed!', '+50 bonus points added to your society.');
-                     } catch (e) {
-                       Alert.alert('Error', 'Could not update pickup.');
-                     }
-                  }} style={{ flex: 1, marginRight: 5, paddingVertical: 8 }} />
-                  <Button title="Cancel" type="secondary" onPress={async () => {
-                     try {
-                        await updateDoc(doc(db, "pickups", p.id), { status: 'Cancelled' });
-                     } catch (e) {
-                        Alert.alert('Error', 'Could not cancel pickup.');
-                     }
-                  }} style={{ flex: 1, marginLeft: 5, paddingVertical: 8 }} />
+        <Text style={styles.sectionTitle}>Past Pickups</Text>
+        {!isLoading && pastPickups.length === 0 ? (
+          <Text style={styles.emptyText}>No past pickups yet.</Text>
+        ) : (
+          pastPickups.map(p => (
+            <Card key={p.id}>
+                <View style={styles.pickupHeader}>
+                  <Text style={styles.vendorName}>{p.vendorName || p.vendor}</Text>
+                  <StatusBadge status={p.status} />
                 </View>
-              )}
-            </Card>
+                <Text style={styles.pickupDetail}>Date: {formatDate(p.scheduledDate || p.date)}</Text>
+                {p.kg ? <Text style={styles.pickupDetail}>Items: {Number(p.kg).toFixed(2)} kg of {p.type}</Text> : null}
+                {p.pointsAwarded != null && <Text style={styles.points}>+{p.pointsAwarded} points</Text>}
+                {p.items && (
+                  <TouchableOpacity onPress={() => navigation.navigate('PickupReview', { pickupId: p.id })}>
+                    <Text style={styles.detailsLink}>View weights, photo & sign-off →</Text>
+                  </TouchableOpacity>
+                )}
+                {p.status === PICKUP_STATUS.SCHEDULED && (
+                  <Button title="Cancel" type="secondary" onPress={() => cancelPickup(p)} style={{ marginTop: 10, paddingVertical: 8 }} />
+                )}
+              </Card>
           ))
         )}
       </ScrollView>
@@ -427,6 +392,46 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    backgroundColor: '#FAFAFA',
+  },
+  dateButton: {
+    padding: 10,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+  },
+  countdown: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.warning,
+    marginTop: 6,
+  },
+  rejection: {
+    fontSize: 13,
+    color: colors.error,
+    marginTop: 6,
+  },
+  detailsLink: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginTop: 8,
+  },
+  points: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.success,
+    marginTop: 4,
   },
   pickupDetail: {
     fontSize: 14,

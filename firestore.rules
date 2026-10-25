@@ -1,0 +1,110 @@
+rules_version = '2';
+
+// Paste into Firebase Console -> Firestore Database -> Rules, then Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return signedIn() && me().role == role;
+    }
+
+    function inMySociety(code) {
+      return signedIn() && me().societyCode == code;
+    }
+
+    function unchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Vendor / BMC official invite codes: looked up by exact code only, never listed or written from the app
+    match /invite_codes/{code} {
+      allow get: if true;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid && (
+        // A new admin creates a brand-new society, so they can't take over an existing one
+        (request.resource.data.role == 'admin'
+          && !exists(/databases/$(database)/documents/societies/$(request.resource.data.societyCode))) ||
+        (request.resource.data.role == 'member'
+          && exists(/databases/$(database)/documents/societies/$(request.resource.data.societyCode))) ||
+        (request.resource.data.role in ['vendor', 'bmc_official']
+          && get(/databases/$(database)/documents/invite_codes/$(request.resource.data.inviteCode)).data.role == request.resource.data.role)
+      );
+      allow update: if signedIn() && request.auth.uid == uid && unchanged(['role', 'societyCode', 'inviteCode']);
+    }
+
+    // Member sign-up checks the society code before the account exists
+    match /societies/{code} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.adminUid == request.auth.uid;
+      allow update: if inMySociety(code);
+    }
+
+    // Collection flow: society schedules -> vendor weighs -> BMC official verifies -> society confirms
+    match /pickups/{id} {
+      allow read: if signedIn();
+      allow create: if hasRole('admin')
+        && request.resource.data.societyCode == me().societyCode
+        && request.resource.data.status == 'Scheduled';
+      allow update: if
+        // Vendor records the weighing for a collection assigned to them
+        (hasRole('vendor')
+          && resource.data.vendorUid == request.auth.uid
+          && resource.data.status == 'Scheduled'
+          && request.resource.data.status == 'Weighed'
+          && unchanged(['societyCode', 'vendorUid', 'verifiedBy', 'pointsAwarded'])) ||
+        // BMC official approves, or sends back for re-weighing
+        (hasRole('bmc_official')
+          && resource.data.status == 'Weighed'
+          && request.resource.data.status in ['Verified', 'Scheduled']
+          && unchanged(['societyCode', 'vendorUid', 'items', 'totalKg', 'grade', 'location', 'weighedAt', 'pointsAwarded'])) ||
+        // Society admin confirms or disputes a verified collection, or cancels one not yet weighed
+        (hasRole('admin')
+          && resource.data.societyCode == me().societyCode
+          && unchanged(['societyCode', 'vendorUid', 'items', 'totalKg', 'grade', 'location', 'weighedAt', 'verifiedBy', 'verifiedAt'])
+          && (
+            (resource.data.status == 'Verified' && request.resource.data.status in ['Completed', 'Scheduled']) ||
+            (resource.data.status == 'Scheduled' && request.resource.data.status == 'Cancelled')
+          ));
+    }
+
+    // Scale photos can only be replaced by the assigned vendor before the weighing is submitted
+    match /pickup_photos/{pickupId} {
+      allow read: if signedIn();
+      allow write: if hasRole('vendor')
+        && get(/databases/$(database)/documents/pickups/$(pickupId)).data.vendorUid == request.auth.uid
+        && get(/databases/$(database)/documents/pickups/$(pickupId)).data.status == 'Scheduled';
+    }
+
+    match /exchange_submissions/{id} {
+      allow read: if signedIn();
+      allow create: if inMySociety(request.resource.data.societyCode);
+    }
+
+    match /announcements/{id} {
+      allow read, write: if signedIn();
+    }
+
+    match /polls/{id} {
+      allow read, write: if signedIn();
+    }
+
+    match /redemptions/{id} {
+      allow read, write: if signedIn();
+    }
+
+    match /footprint_entries/{id} {
+      allow read, write: if signedIn();
+    }
+  }
+}

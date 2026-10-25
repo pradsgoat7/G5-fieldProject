@@ -8,12 +8,14 @@ import Card from '../components/Card';
 import { colors } from '../theme/colors';
 
 const LoginScreen = ({ navigation }) => {
-  const { loginByCredentials, registerAdmin, registerMember } = useContext(AppContext);
-  const [mode, setMode] = useState('login'); // login | register_member | register_admin
+  const { loginByCredentials, registerAdmin, registerMember, registerStaff } = useContext(AppContext);
+  const [mode, setMode] = useState('login'); // login | register_member | register_admin | register_staff
 
   const [name, setName] = useState('');
   const [societyName, setSocietyName] = useState('');
   const [societyCode, setSocietyCode] = useState('');
+  const [organization, setOrganization] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -83,6 +85,16 @@ const LoginScreen = ({ navigation }) => {
           return;
         }
         await registerMember(name, email, societyCode, password);
+      } else if (mode === 'register_staff') {
+        if (!name || !organization || !inviteCode || !email || !password) {
+          Platform.OS === 'web' ? window.alert('Please fill all fields') : Alert.alert('Error', 'Please fill all fields');
+          return;
+        }
+        if (password !== confirmPassword) {
+          Platform.OS === 'web' ? window.alert('Passwords do not match') : Alert.alert('Error', 'Passwords do not match');
+          return;
+        }
+        await registerStaff(name, organization, inviteCode, email, password);
       }
     } catch (e) {
       Platform.OS === 'web' ? window.alert(e.message) : Alert.alert('Error', e.message);
@@ -115,6 +127,12 @@ const LoginScreen = ({ navigation }) => {
                 onPress={() => setMode('register_admin')} 
                 style={styles.tabButton} 
               />
+              <Button 
+                title="Vendor / BMC" 
+                type={mode === 'register_staff' ? 'primary' : 'secondary'} 
+                onPress={() => setMode('register_staff')} 
+                style={styles.tabButton} 
+              />
             </View>
           )}
 
@@ -128,6 +146,13 @@ const LoginScreen = ({ navigation }) => {
 
           {mode === 'register_member' && (
             <TextInput style={styles.input} placeholder="Society Code (from Admin)" value={societyCode} onChangeText={setSocietyCode} autoCapitalize="characters" />
+          )}
+
+          {mode === 'register_staff' && (
+            <>
+              <TextInput style={styles.input} placeholder="Company Name / BMC Ward" value={organization} onChangeText={setOrganization} />
+              <TextInput style={styles.input} placeholder="Invite Code" value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
+            </>
           )}
 
           <TextInput style={styles.input} placeholder="Email" keyboardType="email-address" value={email} onChangeText={setEmail} autoCapitalize="none" />

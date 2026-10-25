@@ -25,7 +25,7 @@ const SocietyPointsScreen = () => {
 
     const unsubSubmissions = onSnapshot(query(collection(db, "exchange_submissions"), where("societyCode", "==", user.societyCode)), (snapshot) => {
       const subs = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-      setSocietySubmissions(subs.sort((a, b) => b.date - a.date));
+      setSocietySubmissions(subs.sort((a, b) => (b.date?.seconds || b.date || 0) - (a.date?.seconds || a.date || 0)));
     });
 
     const unsubRedemptions = onSnapshot(query(collection(db, "redemptions"), where("societyCode", "==", user.societyCode)), (snapshot) => {
@@ -71,10 +71,12 @@ const SocietyPointsScreen = () => {
           societySubmissions.map(sub => (
             <Card key={sub.id} style={styles.historyCard}>
               <View style={styles.historyHeader}>
-                <Text style={styles.historyType}>{sub.type}</Text>
-                <Text style={styles.historyPoints}>+{sub.points} pts</Text>
+                <Text style={styles.historyType}>{sub.plasticType || sub.type}</Text>
+                <Text style={styles.historyPoints}>{(sub.pointsEarned ?? sub.points) >= 0 ? '+' : ''}{sub.pointsEarned ?? sub.points} pts</Text>
               </View>
-              <Text style={styles.historyDate}>{new Date(sub.date).toLocaleDateString()} - {sub.kg} kg</Text>
+              <Text style={styles.historyDate}>
+                {(sub.date?.toDate ? sub.date.toDate() : new Date(sub.date)).toLocaleDateString()} - {Number(sub.kg || 0).toFixed(2)} kg{sub.source === 'verified_pickup' ? ' • BMC verified ✅' : ''}
+              </Text>
             </Card>
           ))
         )}

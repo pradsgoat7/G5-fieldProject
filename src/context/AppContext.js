@@ -142,6 +142,43 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Vendors and BMC officials join with an invite code; the code decides which role they get
+  const registerStaff = async (name, organization, inviteCode, email, password) => {
+    let createdUser = null;
+    try {
+      const code = inviteCode.trim().toUpperCase();
+      const inviteDoc = await getDoc(doc(db, "invite_codes", code));
+      const role = inviteDoc.exists() ? inviteDoc.data().role : null;
+
+      if (role !== 'vendor' && role !== 'bmc_official') {
+        throw new Error('Invalid invite code. Please check with the PlasticTrack team.');
+      }
+
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      createdUser = userCredential.user;
+      const uid = userCredential.user.uid;
+
+      const userData = {
+        uid,
+        name,
+        email,
+        role,
+        organization,
+        inviteCode: code,
+        createdAt: Date.now()
+      };
+      await setDoc(doc(db, "users", uid), userData);
+
+      // onAuthStateChanged fires before the user doc is written, so it can't log the user in
+      setUser(userData);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error("registerStaff error:", error);
+      await rollbackAuthUser(createdUser);
+      throw new Error(friendlyAuthError(error));
+    }
+  };
+
   const loginByCredentials = async (email, password) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -166,7 +203,7 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider value={{
       isLoading, isAuthenticated, user,
-      registerAdmin, registerMember, loginByCredentials, logout,
+      registerAdmin, registerMember, registerStaff, loginByCredentials, logout,
       challengeJoined, toggleChallenge,
       helpfulTips, setHelpfulTips
     }}>
