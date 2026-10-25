@@ -12,16 +12,32 @@ const UpdatesScreen = () => {
   const { user } = useContext(AppContext);
   const [updates, setUpdates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  
+  const [isCreating, setIsCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newType, setNewType] = useState('announcement');
 
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "announcements"), where("societyCode", "==", user.societyCode), orderBy("timestamp", "desc"));
+    if (!user || !user.societyCode) {
+      setUpdates([]);
+      setIsLoading(false);
+      return;
+    }
+    const q = query(collection(db, "announcements"), where("societyCode", "==", user.societyCode));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-      setUpdates(data);
+      const sortedData = data.sort((a, b) => {
+        const aTime = a.timestamp || 0;
+        const bTime = b.timestamp || 0;
+        return bTime - aTime;
+      });
+      setUpdates(sortedData);
       setIsLoading(false);
     }, (error) => {
       console.log("Error fetching announcements", error);
+      setUpdates([]);
       setIsLoading(false);
     });
     return () => unsubscribe();
@@ -74,7 +90,19 @@ const UpdatesScreen = () => {
 
   const getStyleForType = (type) => CATEGORIES.find(c => c.id === type) || CATEGORIES[0];
 
-  return (
+  if (hasError) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text>⚠️ Something went wrong loading updates.</Text>
+        <TouchableOpacity onPress={() => setHasError(false)}>
+          <Text style={{color: '#2E7D32', marginTop: 10}}>Tap to retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  try {
+    return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="broadcast" size={28} color={colors.primary} />
@@ -163,6 +191,11 @@ const UpdatesScreen = () => {
       </ScrollView>
     </SafeAreaView>
   );
+  } catch (err) {
+    console.error("Render error in UpdatesScreen:", err);
+    if (!hasError) setHasError(true);
+    return null;
+  }
 };
 
 const styles = StyleSheet.create({

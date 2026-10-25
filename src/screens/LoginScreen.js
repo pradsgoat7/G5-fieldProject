@@ -17,8 +17,11 @@ const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const executeAction = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       if (mode === 'login') {
         if (!email || !password) {
@@ -83,6 +86,8 @@ const LoginScreen = ({ navigation }) => {
       }
     } catch (e) {
       Platform.OS === 'web' ? window.alert(e.message) : Alert.alert('Error', e.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -133,8 +138,9 @@ const LoginScreen = ({ navigation }) => {
           )}
 
           <Button 
-            title={mode === 'login' ? 'Login' : 'Register'} 
+            title={submitting ? 'Please wait...' : (mode === 'login' ? 'Login' : 'Register')} 
             onPress={executeAction} 
+            disabled={submitting}
             style={{ marginTop: 20 }}
           />
 

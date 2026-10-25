@@ -56,6 +56,8 @@ const CommunityScreen = () => {
         let grade = 'C';
         if (normalizedScore >= 10.0) grade = 'A';
         else if (normalizedScore >= 4.0) grade = 'B';
+        else if (normalizedScore >= 0.0) grade = 'C';
+        else grade = 'D';
 
         return {
           ...soc,
@@ -203,6 +205,7 @@ const CommunityScreen = () => {
                 if (item.grade === 'A') gradeIcon = '🟢';
                 else if (item.grade === 'B') gradeIcon = '🟡';
                 else if (item.grade === 'C') gradeIcon = '🔴';
+                else if (item.grade === 'D') gradeIcon = '⚫';
               }
 
               return (
@@ -213,9 +216,10 @@ const CommunityScreen = () => {
                     <>
                       <View style={styles.lbNewHeader}>
                         <Text style={styles.lbNewRank}>{medal ? medal : `#${item.rank}`}  {item.societyName}</Text>
-                        <Text style={styles.lbNewGrade}>[{gradeText}] {gradeIcon}</Text>
+                        <Text style={[styles.lbNewGrade, item.grade === 'D' && { backgroundColor: '#333', color: '#FFF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }]}>[{gradeText}] {gradeIcon}</Text>
                       </View>
                       <Text style={styles.lbNewScore}>Score: {item.normalizedScore.toFixed(1)} pts/household/week</Text>
+                      {item.grade === 'D' && <Text style={{ fontSize: 12, color: '#D32F2F', fontStyle: 'italic', marginBottom: 4 }}>Submitting too much non-recyclable plastic.</Text>}
                       <Text style={styles.lbNewSub}>Members: {item.membersCount} | Active: {item.weeksActive} weeks</Text>
                       <Text style={styles.lbNewSub}>Total Points: {item.totalPointsEarned}</Text>
                       {item.totalPointsEarned === 0 && <Text style={[styles.lbNewSub, { fontStyle: 'italic', color: '#999' }]}>No submissions yet</Text>}

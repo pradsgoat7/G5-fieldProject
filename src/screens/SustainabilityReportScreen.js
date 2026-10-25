@@ -67,7 +67,9 @@ const SustainabilityReportScreen = () => {
       const pointsEarned = societySubmissions.reduce((acc, curr) => acc + (curr.pointsEarned || 0), 0);
       const totalRecyclableKg = societySubmissions.reduce((acc, curr) => curr.category === 'recyclable' ? acc + (curr.kg || 0) : acc, 0);
       const totalNonRecyclableKg = societySubmissions.reduce((acc, curr) => curr.category === 'non_recyclable' ? acc + (curr.kg || 0) : acc, 0);
-      setStats(prev => ({...prev, totalKgRecycled, totalRecyclableKg, totalNonRecyclableKg, pointsEarned}));
+      const totalRecyclablePoints = societySubmissions.reduce((acc, curr) => curr.category === 'recyclable' ? acc + (curr.pointsEarned || 0) : acc, 0);
+      const totalNonRecyclablePoints = societySubmissions.reduce((acc, curr) => curr.category === 'non_recyclable' ? acc + (curr.pointsEarned || 0) : acc, 0);
+      setStats(prev => ({...prev, totalKgRecycled, totalRecyclableKg, totalNonRecyclableKg, pointsEarned, totalRecyclablePoints, totalNonRecyclablePoints}));
     });
 
     const unsubPickups = onSnapshot(query(collection(db, "pickups"), where("societyCode", "==", user.societyCode)), (snapshot) => {
@@ -129,8 +131,10 @@ const SustainabilityReportScreen = () => {
 
         <Text style={styles.sectionTitle}>Submission Breakdown</Text>
         <Card style={styles.breakdownCard}>
-          <Text style={styles.breakdownText}>♻️ {stats.totalRecyclableKg.toFixed(1)} kg Recyclable submitted</Text>
-          <Text style={styles.breakdownText}>🚫 {stats.totalNonRecyclableKg.toFixed(1)} kg Non-Recyclable submitted</Text>
+          <Text style={styles.breakdownText}>♻️ Recyclable:     {stats.totalRecyclableKg.toFixed(1)} kg  →  +{Math.abs(stats.totalRecyclablePoints || 0)} points earned</Text>
+          <Text style={styles.breakdownText}>🚫 Non-Recyclable: {stats.totalNonRecyclableKg.toFixed(1)} kg  →  -{Math.abs(stats.totalNonRecyclablePoints || 0)} points deducted</Text>
+          <View style={{ height: 1, backgroundColor: '#E0E0E0', marginVertical: 10 }} />
+          <Text style={[styles.breakdownText, { fontWeight: 'bold' }]}>📊 Net Points from Submissions: {stats.pointsEarned} points</Text>
         </Card>
 
         <Text style={styles.sectionTitle}>Personal Grade</Text>

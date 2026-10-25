@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TextInput, Alert, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, increment, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -41,17 +41,25 @@ const ExchangeScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.societyCode) return;
+    
+    console.log("Current user societyCode:", user.societyCode);
+    console.log("Fetching submissions for society...");
 
     const q = query(
       collection(db, "exchange_submissions"),
-      where("societyCode", "==", user.societyCode),
-      orderBy("date", "desc")
+      where("societyCode", "==", user.societyCode)
     );
     
     const unsubscribeSubmissions = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-      setSocietySubmissions(data);
+      const sortedData = data.sort((a, b) => {
+        const aTime = a.date?.seconds || a.date || 0;
+        const bTime = b.date?.seconds || b.date || 0;
+        return bTime - aTime;
+      });
+      console.log("Submissions loaded:", sortedData.length);
+      setSocietySubmissions(sortedData);
     }, (error) => {
       console.log("Error fetching submissions", error);
     });
@@ -70,7 +78,11 @@ const ExchangeScreen = () => {
     };
   }, [user]);
 
-  const submitExchange = async () => {
+
+  const submitExchange = () => {
+    console.log("Submit pressed");
+    console.log("Category:", category);
+
     if (!category) {
       Alert.alert('Error', 'Please select a category');
       return;
@@ -86,53 +98,87 @@ const ExchangeScreen = () => {
     }
     
     const kg = parseFloat(quantity);
+    console.log("Quantity:", quantity);
     if (!kg || kg <= 0) {
       Alert.alert('Invalid Quantity', 'Please enter a valid weight in kg.');
       return;
     }
 
-    const mf = category === 'recyclable' ? 1.5 : 0.5;
+    let mf;
+    if (category === "recyclable") {
+      mf = 1.5;
+    } else {
+      mf = -0.5;
+    }
     const earnedPoints = kg * 10 * mf;
     const plasticTypeToSave = isOthers ? customType.trim() : selectedType.name;
     
-    try {
-      await addDoc(collection(db, "exchange_submissions"), {
-        societyCode: user.societyCode,
-        category: category,
-        plasticType: plasticTypeToSave,
-        kg,
-        impactFactor: 10,
-        multiplyingFactor: mf,
-        pointsEarned: earnedPoints,
-        submittedBy: user.uid,
-        date: serverTimestamp()
-      });
+    console.log("Plastic type:", plasticTypeToSave);
+    console.log("Points to save:", earnedPoints);
+    
+    const saveSubmission = async () => {
+      console.log("Saving to Firestore...");
+      try {
+        await addDoc(collection(db, "exchange_submissions"), {
+          societyCode: user.societyCode,
+          category: category,
+          plasticType: plasticTypeToSave,
+          kg,
+          impactFactor: 10,
+          multiplyingFactor: mf,
+          pointsEarned: earnedPoints,
+          submittedBy: user.uid,
+          date: serverTimestamp()
+        });
 
-      await updateDoc(doc(db, "societies", user.societyCode), {
-        totalPointsEarned: increment(earnedPoints)
-      });
-      
-      await addDoc(collection(db, "announcements"), {
-        societyCode: user.societyCode,
-        type: 'activity',
-        title: 'New Exchange Submission',
-        description: `Admin submitted ${kg} kg of ${plasticTypeToSave} and earned ${earnedPoints} points!`,
-        timestamp: Date.now()
-      });
+        await updateDoc(doc(db, "societies", user.societyCode), {
+          totalPointsEarned: increment(earnedPoints)
+        });
+        
+        await addDoc(collection(db, "announcements"), {
+          societyCode: user.societyCode,
+          type: 'activity',
+          title: 'New Exchange Submission',
+          description: `Admin submitted ${kg} kg of ${plasticTypeToSave} and ${category === 'recyclable' ? 'earned' : 'lost'} ${Math.abs(earnedPoints)} points!`,
+          timestamp: Date.now()
+        });
 
-      Alert.alert(
-        'Success!', 
-        `You submitted ${kg} kg of ${plasticTypeToSave} and earned ${earnedPoints} points!`,
-        [{ text: 'Awesome' }]
-      );
-      
-      setCategory(null);
-      setSelectedType(null);
-      setCustomType('');
-      setQuantity('');
-    } catch (e) {
-      console.error(e);
-      Alert.alert('Error', 'Could not save data. Check your connection.');
+        console.log("Saved successfully");
+
+        Alert.alert(
+          'Success!', 
+          `You submitted ${kg} kg of ${plasticTypeToSave} and ${category === 'recyclable' ? 'earned' : 'lost'} ${Math.abs(earnedPoints)} points!`,
+          [{ text: 'Awesome' }]
+        );
+        
+        setCategory(null);
+        setSelectedType(null);
+        setCustomType('');
+        setQuantity('');
+      } catch (e) {
+        console.error(e);
+        Alert.alert('Error', 'Could not save data. Check your connection.');
+      }
+    };
+
+    if (category === 'non_recyclable') {
+      const deductionAmount = kg * 10 * 0.5;
+      if (Platform.OS === 'web') {
+        if (window.confirm(`⚠️ Confirm Submission\n\nYou are submitting non-recyclable plastic.\n\nThis will DEDUCT ${deductionAmount} points from your society.\n\nAre you sure you want to continue?`)) {
+          saveSubmission();
+        }
+      } else {
+        Alert.alert(
+          "⚠️ Confirm Submission",
+          `You are submitting non-recyclable plastic.\n\nThis will DEDUCT ${deductionAmount} points from your society.\n\nAre you sure you want to continue?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Yes, Submit", onPress: () => saveSubmission() }
+          ]
+        );
+      }
+    } else {
+      saveSubmission();
     }
   };
 
@@ -176,8 +222,8 @@ const ExchangeScreen = () => {
               onPress={() => { setCategory('non_recyclable'); setSelectedType(null); setCustomType(''); }}
             >
               <Text style={styles.categoryTitle}>🚫 Non-Recyclable</Text>
-              <Text style={styles.categorySubtitle}>Earn 0.5x points</Text>
-              <Text style={styles.categoryTap}>[tap to select]</Text>
+              <Text style={styles.categorySubtitle}>Lose 0.5x points</Text>
+              <Text style={styles.categoryTap}>MF: -0.5x  •  Points will be deducted</Text>
             </TouchableOpacity>
           </View>
 
@@ -234,18 +280,18 @@ const ExchangeScreen = () => {
 
           {category && (
             <View style={[styles.previewCard, category === 'recyclable' ? styles.previewRecyclable : styles.previewNonRecyclable]}>
-              <Text style={styles.previewTitle}>📊 Points Preview</Text>
-              <Text style={styles.previewText}>Category: {category === 'recyclable' ? 'Recyclable (MF: 1.5x)' : 'Non-Recyclable (MF: 0.5x)'}</Text>
+              <Text style={styles.previewTitle}>{category === 'recyclable' ? '📊 Points Preview' : '⚠️ Points Preview'}</Text>
+              <Text style={styles.previewText}>Category: {category === 'recyclable' ? 'Recyclable  (MF: +1.5x)' : 'Non-Recyclable  (MF: -0.5x)'}</Text>
               <Text style={styles.previewText}>Plastic: {selectedType ? (selectedType.id.startsWith('others') ? (customType || '...') : selectedType.name) : '-'}</Text>
               <Text style={styles.previewText}>Quantity: {quantity ? quantity + ' kg' : '-' }</Text>
               
               {(parseFloat(quantity) > 0) ? (
                 <>
-                  <Text style={styles.previewPoints}>Points = {parseFloat(quantity)} × 10 × {category === 'recyclable' ? 1.5 : 0.5} = {parseFloat(quantity) * 10 * (category === 'recyclable' ? 1.5 : 0.5)} points</Text>
-                  <Text style={styles.previewMessage}>
+                  <Text style={[styles.previewPoints, category === 'non_recyclable' && { color: 'red' }]}>Points = {parseFloat(quantity)} × 10 × {category === 'recyclable' ? '1.5' : '(-0.5)'} = {parseFloat(quantity) * 10 * (category === 'recyclable' ? 1.5 : -0.5)} points</Text>
+                  <Text style={[styles.previewMessage, category === 'non_recyclable' && { color: 'red', fontWeight: 'bold' }]}>
                     {category === 'recyclable' 
-                      ? '✅ Great choice! Recyclable plastic earns higher rewards.' 
-                      : '⚠️ Non-recyclable plastic earns fewer rewards. Consider reducing usage.'}
+                      ? '✅ Great choice! You earn reward points.' 
+                      : `❌ Warning: This will DEDUCT ${Math.abs(parseFloat(quantity) * 10 * -0.5)} points\nfrom your society balance!`}
                   </Text>
                 </>
               ) : (
@@ -269,7 +315,11 @@ const ExchangeScreen = () => {
             const bgColors = isLegacy ? '#EEEEEE' : (isRecyclable ? '#E8F5E9' : '#FFF3E0');
             const titleText = isLegacy ? `🗄️ ${sub.plasticType}` : (isRecyclable ? `♻️ ${sub.plasticType}` : `🚫 ${sub.plasticType}`);
             const badgeText = isLegacy ? 'Legacy Submission' : (isRecyclable ? 'Recyclable 🟢' : 'Non-Recyclable 🔴');
-            const mfText = isLegacy ? '' : ` (MF: ${sub.multiplyingFactor}x)`;
+            const mfText = isLegacy ? '' : ` (MF: ${isRecyclable ? '+1.5' : '-0.5'}x)`;
+            
+            const isNegative = sub.pointsEarned < 0;
+            const pointsColor = isNegative ? 'red' : colors.success;
+            const pointsText = isLegacy ? `Points earned: +${sub.pointsEarned}` : `Points: ${isNegative ? '' : '+'}${sub.pointsEarned}${mfText}`;
 
             return (
               <Card key={sub.id} style={styles.subCard}>
@@ -280,7 +330,7 @@ const ExchangeScreen = () => {
                   </View>
                 </View>
                 <Text style={styles.subDate}>{sub.kg} kg  •  {sub.date?.toDate ? sub.date.toDate().toLocaleDateString() : 'Just now'}</Text>
-                <Text style={styles.subPointsText}>Points earned: +{sub.pointsEarned}{mfText}</Text>
+                <Text style={[styles.subPointsText, { color: pointsColor }]}>{pointsText}</Text>
               </Card>
             );
           })
@@ -488,8 +538,8 @@ const styles = StyleSheet.create({
     borderColor: '#C8E6C9',
   },
   previewNonRecyclable: {
-    backgroundColor: '#FFF3E0',
-    borderColor: '#FFE0B2',
+    backgroundColor: '#FFEBEE',
+    borderColor: '#FFCDD2',
   },
   previewTitle: {
     fontSize: 16,

@@ -12,18 +12,27 @@ const MemberActivityScreen = () => {
   const [membersList, setMembersList] = useState([]);
   const [activeCount, setActiveCount] = useState(0);
 
-  const getISOWeekInfo = (date = new Date()) => {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    const day = (d.getDay() || 7) - 1; 
-    d.setDate(d.getDate() - day + 3); 
-    const firstThursday = d.getTime();
-    d.setMonth(0, 1);
-    if (d.getDay() !== 4) {
-      d.setMonth(0, 1 + ((4 - d.getDay()) + 7) % 7);
+  const getActivityStatus = (lastLoggedDate) => {
+    if (!lastLoggedDate) return "never";
+    const logDate = lastLoggedDate?.toDate ? lastLoggedDate.toDate() : new Date(lastLoggedDate);
+    const now = new Date();
+    
+    const startOfWeek = new Date(now);
+    const day = startOfWeek.getDay();
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+    startOfWeek.setDate(diff);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    const startOfLastWeek = new Date(startOfWeek);
+    startOfLastWeek.setDate(startOfLastWeek.getDate() - 7);
+    
+    if (logDate >= startOfWeek) {
+      return "active_this_week";
+    } else if (logDate >= startOfLastWeek) {
+      return "active_last_week";
+    } else {
+      return "inactive";
     }
-    const weekNum = 1 + Math.ceil((firstThursday - d) / 604800000);
-    return { year: d.getFullYear(), week: weekNum };
   };
 
   const [isLoading, setIsLoading] = useState(true);
@@ -51,11 +60,16 @@ const MemberActivityScreen = () => {
     if (user?.role !== 'admin') return;
     setIsLoading(true);
 
-    const currentWeekInfo = getISOWeekInfo(Date.now());
     let activeThisWeek = 0;
 
     const processedMembers = societyUsers.map(member => {
-      const memberEntries = societyFootprints.filter(f => f.userId === member.uid).sort((a,b) => b.date - a.date);
+      const memberEntries = societyFootprints.filter(f => f.userId === member.uid);
+      
+      memberEntries.sort((a, b) => {
+        const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+        const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+        return dateB - dateA;
+      });
       
       let status = 'never';
       let badgeColor = '#9E9E9E';
@@ -66,25 +80,20 @@ const MemberActivityScreen = () => {
 
       if (memberEntries.length > 0) {
         const latestEntry = memberEntries[0];
-        lastDate = new Date(latestEntry.date);
+        lastDate = latestEntry.date?.toDate ? latestEntry.date.toDate() : (latestEntry.date ? new Date(latestEntry.date) : null);
         latestTotal = latestEntry.totalKg;
         latestRating = latestEntry.rating;
 
-        const entryWeekInfo = getISOWeekInfo(lastDate);
-        if (entryWeekInfo.year === currentWeekInfo.year && entryWeekInfo.week === currentWeekInfo.week) {
-           status = 'active_this';
+        status = getActivityStatus(latestEntry.date);
+        
+        if (status === "active_this_week") {
            badgeColor = colors.success;
            badgeLabel = 'Active this week ✅';
            activeThisWeek++;
-        } else if (
-           (entryWeekInfo.year === currentWeekInfo.year && entryWeekInfo.week === currentWeekInfo.week - 1) ||
-           (entryWeekInfo.year === currentWeekInfo.year - 1 && currentWeekInfo.week === 1 && entryWeekInfo.week > 50)
-        ) {
-           status = 'active_last';
+        } else if (status === "active_last_week") {
            badgeColor = colors.ratingGood;
            badgeLabel = 'Active last week';
         } else {
-           status = 'inactive';
            badgeColor = colors.error;
            badgeLabel = 'Inactive ⚠️';
         }
@@ -105,8 +114,8 @@ const MemberActivityScreen = () => {
     const statusOrder = {
       'never': 1,
       'inactive': 2,
-      'active_last': 3,
-      'active_this': 4
+      'active_last_week': 3,
+      'active_this_week': 4
     };
 
     processedMembers.sort((a,b) => statusOrder[a.status] - statusOrder[b.status]);
@@ -149,7 +158,9 @@ const MemberActivityScreen = () => {
                    <Text style={styles.badgeText}>{member.badgeLabel}</Text>
                  </View>
                  {member.lastDate && (
-                   <Text style={styles.dateText}>Last logged: {member.lastDate.toLocaleDateString()}</Text>
+                   <Text style={styles.dateText}>
+                     Last logged: {member.lastDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                   </Text>
                  )}
               </View>
 

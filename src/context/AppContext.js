@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
@@ -46,11 +46,31 @@ export const AppProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
+  const friendlyAuthError = (error) => {
+    if (error.code === 'auth/email-already-in-use') return 'This email is already registered. Please log in instead.';
+    if (error.code === 'auth/weak-password') return 'Password must be at least 6 characters.';
+    if (error.code === 'auth/invalid-email') return 'Please enter a valid email address.';
+    return error.message;
+  };
+
+  // If profile setup fails after the auth account is created, remove the account
+  // so the email isn't left registered with no user document.
+  const rollbackAuthUser = async (createdUser) => {
+    if (!createdUser) return;
+    try {
+      await deleteUser(createdUser);
+    } catch (e) {
+      console.error("rollbackAuthUser error:", e);
+    }
+  };
+
   const registerAdmin = async (name, societyName, email, password) => {
+    let createdUser = null;
     try {
       const societyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      createdUser = userCredential.user;
       const uid = userCredential.user.uid;
 
       await setDoc(doc(db, "users", uid), {
@@ -76,11 +96,13 @@ export const AppProvider = ({ children }) => {
       return societyCode;
     } catch (error) {
       console.error("registerAdmin error:", error);
-      throw new Error(error.message);
+      await rollbackAuthUser(createdUser);
+      throw new Error(friendlyAuthError(error));
     }
   };
 
   const registerMember = async (name, email, societyCode, password) => {
+    let createdUser = null;
     try {
       const societyDocRef = doc(db, "societies", societyCode);
       const societyDoc = await getDoc(societyDocRef);
@@ -92,9 +114,10 @@ export const AppProvider = ({ children }) => {
       const societyData = societyDoc.data();
 
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      createdUser = userCredential.user;
       const uid = userCredential.user.uid;
 
-      await setDoc(doc(db, "users", uid), {
+      const userData = {
         uid,
         name,
         email,
@@ -102,15 +125,20 @@ export const AppProvider = ({ children }) => {
         societyCode,
         societyName: societyData.societyName,
         createdAt: Date.now()
-      });
+      };
+      await setDoc(doc(db, "users", uid), userData);
 
       await updateDoc(societyDocRef, {
         memberCount: increment(1)
       });
-      
+
+      // onAuthStateChanged fires before the user doc is written, so it can't log the member in
+      setUser(userData);
+      setIsAuthenticated(true);
     } catch (error) {
       console.error("registerMember error:", error);
-      throw new Error(error.message);
+      await rollbackAuthUser(createdUser);
+      throw new Error(friendlyAuthError(error));
     }
   };
 

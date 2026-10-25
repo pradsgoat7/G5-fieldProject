@@ -64,6 +64,8 @@ const HomeScreen = ({ navigation }) => {
         let grade = 'C';
         if (normalizedScore >= 10.0) grade = 'A';
         else if (normalizedScore >= 4.0) grade = 'B';
+        else if (normalizedScore >= 0.0) grade = 'C';
+        else grade = 'D';
         return { ...soc, normalizedScore, isEvaluating, grade };
       });
       const ranked = computed.filter(s => !s.isEvaluating).sort((a, b) => b.normalizedScore - a.normalizedScore);
@@ -222,8 +224,11 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.cardTitle}>Reward Points</Text>
             <View style={styles.scoreRow}>
               <MaterialCommunityIcons name="star" size={28} color="#FFD700" />
-              <Text style={styles.pointsText}>{points}</Text>
+              <Text style={[styles.pointsText, { color: points > 0 ? colors.success : (points < 0 ? 'red' : 'gray') }]}>{points}</Text>
             </View>
+            {points < 0 && (
+              <Text style={{ fontSize: 12, color: 'red', marginBottom: 10 }}>⚠️ Your society is in negative points due to non-recyclable plastic submissions.</Text>
+            )}
             {user?.role === 'admin' && (
               <TouchableOpacity onPress={() => navigation.navigate('Rewards')} style={styles.linkButton}>
                 <Text style={styles.linkText}>Manage Rewards</Text>
@@ -245,12 +250,15 @@ const HomeScreen = ({ navigation }) => {
                 <View style={[styles.scoreRow, { marginBottom: 2 }]}>
                   <Text style={styles.scoreText}>#{adminRankData.rank}</Text>
                   <Text style={{ fontSize: 18, marginLeft: 10, fontWeight: 'bold', color: '#555' }}>
-                    {adminRankData.grade === 'A' ? '🟢' : adminRankData.grade === 'B' ? '🟡' : '🔴'} [{adminRankData.grade}]
+                    {adminRankData.grade === 'A' ? '🟢' : adminRankData.grade === 'B' ? '🟡' : adminRankData.grade === 'C' ? '🔴' : '⚫'} [{adminRankData.grade}]
                   </Text>
                 </View>
                 <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 10, fontWeight: '500' }}>
                   {adminRankData.normalizedScore.toFixed(1)} pts/household/week
                 </Text>
+                {adminRankData.grade === 'D' && (
+                  <Text style={{ fontSize: 12, color: '#D32F2F', fontStyle: 'italic', marginBottom: 10 }}>Submitting too much non-recyclable plastic.</Text>
+                )}
               </View>
             )}
             <TouchableOpacity onPress={() => navigation.navigate('Community')} style={[styles.linkButton, { marginTop: 0 }]}>
